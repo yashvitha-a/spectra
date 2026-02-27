@@ -194,20 +194,4 @@ Navigate to **http://localhost:5000**
 
 ---
 
-## 👥 Team Spectra
-
-- **Yashwitha A** — Lead Developer
-- **Nidhi S** — Security Research
-- **Syed Abdulla Nawaz** — UI/UX Design
-- **Nitesh Raja Nagalu** — Backend Engineer
-- **Monisha M S** — QA & Logic
-
----
-
-## 📄 License
-
-Educational project developed at Maharaja Institute of Technology Mysore.
-
----
-
 **Built with ❤️ for cybersecurity education** • Version 2.0
