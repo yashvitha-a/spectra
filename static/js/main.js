@@ -156,22 +156,34 @@ async function loadScenarios() {
         const res = await fetch('/api/scenarios');
         const scenarios = await res.json();
         const grid = document.getElementById('scenarios-list');
-        grid.innerHTML = scenarios.map(s => {
+        // Sort by difficulty: Beginner -> Intermediate -> Advanced
+        const diffOrder = { 'Beginner': 1, 'Intermediate': 2, 'Advanced': 3 };
+        scenarios.sort((a, b) => (diffOrder[a.difficulty] || 99) - (diffOrder[b.difficulty] || 99));
+        let html = '';
+        let lastDiff = '';
+        for (const s of scenarios) {
+            if (s.difficulty !== lastDiff) {
+                const levelClass = s.difficulty.toLowerCase();
+                const levelIcon = s.difficulty === 'Beginner' ? 'I' : s.difficulty === 'Intermediate' ? 'II' : 'III';
+                html += `<div class="difficulty-header ${levelClass}"><span class="diff-icon">Level ${levelIcon}</span> ${s.difficulty}</div>`;
+                lastDiff = s.difficulty;
+            }
             const rooms = currentMode === 'detect' && s.forensics_rooms ? s.forensics_rooms : (s.tryhackme_rooms || '');
             const roomLinks = rooms.split(';').filter(Boolean).map(r => {
                 const [name, url] = r.split('|');
                 return url ? `<a href="${url}" target="_blank" class="thm-link">${name}</a>` : '';
             }).join('');
-            return `<div class="scenario-card" onclick="selectScenario(${s.id})">
+            html += `<div class="scenario-card" onclick="selectScenario(${s.id})">
                 <h3>${s.name}</h3>
                 <p>${s.description}</p>
                 <div class="scenario-meta">
                     <span>${s.attack_type}</span>
-                    <span>${s.difficulty}</span>
+                    <span class="diff-badge ${s.difficulty.toLowerCase()}">${s.difficulty}</span>
                 </div>
                 ${roomLinks ? `<div class="thm-rooms"><span class="thm-label">THM:</span>${roomLinks}</div>` : ''}
             </div>`;
-        }).join('');
+        }
+        grid.innerHTML = html;
     } catch (e) { console.error('Failed to load scenarios:', e); }
 }
 
@@ -206,9 +218,79 @@ async function selectScenario(id) {
 }
 
 // ===== Attack Mode =====
+
+// Level Guides (like TryHackMe room descriptions)
+const scenarioGuides = {
+    1: { title: 'Phishing & Credential Theft', obj: 'Execute a full phishing attack chain from recon to lateral movement.', learn: ['Network scanning with <code>nmap</code>', 'Email crafting with <code>setoolkit</code>', 'Website cloning with <code>httrack</code>', 'Credential harvesting'], steps: ['Use <code>nmap</code> to scan the target domain', 'Use <code>setoolkit</code> to craft a phishing email', 'Clone the login page with <code>httrack</code>', 'Send spoofed email with <code>sendmail</code>', 'Listen for credentials with <code>harvest</code>', 'SSH into target with stolen creds'], context: 'The 2020 Twitter hack used social engineering. Phishing is the #1 attack vector in 91% of breaches.' },
+    2: { title: 'SQL Injection Attack', obj: 'Exploit a vulnerable web application to extract database contents.', learn: ['Directory enumeration with <code>dirb</code>', 'SQL injection with <code>sqlmap</code>', 'Database dumping', 'Data exfiltration'], steps: ['Discover hidden pages with <code>dirb</code>', 'Test for SQLi with <code>sqlmap</code> and URL params', 'List databases with <code>--dbs</code> flag', 'Dump data with <code>--dump</code>', 'Connect to DB with <code>psql</code>', 'Exfiltrate with <code>pg_dump</code>'], context: 'The 2017 Equifax breach exposed 147M records through an unpatched SQL injection vulnerability.' },
+    3: { title: 'Malware & Ransomware', obj: 'Create and deploy ransomware to understand how file encryption attacks work.', learn: ['Payload generation with <code>msfvenom</code>', 'Reverse shells with <code>nc</code>', 'File encryption techniques', 'Anti-forensics with <code>shred</code>'], steps: ['Generate payload with <code>msfvenom</code>', 'Set up listener with <code>nc</code>', 'Deploy payload via <code>scp</code>', 'Encrypt files with ransomware tool', 'Shred evidence with <code>shred</code>', 'Anonymize with <code>tor-browser</code>'], context: 'WannaCry (2017) hit 200,000+ computers in 150 countries. Average ransom payment in 2023 was $1.5M.' },
+    4: { title: 'Insider Threat', obj: 'Simulate an insider abusing legitimate access to steal data.', learn: ['VPN tunneling and evasion', 'Database access patterns', 'Data exfiltration methods', 'Dark web operations'], steps: ['Connect via <code>vpn</code>', 'Run database queries with <code>psql</code>', 'Export data with <code>pg_dump</code>', 'Set up anonymous exfil server', 'Use credential spraying', 'Access dark web marketplace'], context: 'Edward Snowden leaked classified NSA documents in 2013. Insider threats account for 25% of data breaches.' },
+    5: { title: 'DDoS Attack', obj: 'Orchestrate a distributed denial-of-service attack across multiple vectors.', learn: ['SYN flood attacks with <code>hping3</code>', 'Application-layer attacks with <code>slowloris</code>', 'Botnet coordination', 'DNS amplification'], steps: ['Launch SYN flood with <code>hping3</code>', 'Start slowloris attack', 'Activate botnet nodes', 'Execute DNS amplification', 'Layer application-level DDoS', 'Coordinate distributed attack'], context: 'GitHub survived a 1.3 Tbps DDoS attack in 2018. Mirai botnet took down major internet services in 2016.' },
+    6: { title: 'Man-in-the-Middle', obj: 'Intercept network communications between two parties.', learn: ['ARP spoofing with <code>arpspoof</code>', 'Packet capture with <code>tcpdump</code>', 'SSL stripping', 'Session hijacking'], steps: ['Scan local network with <code>arp-scan</code>', 'ARP spoof the gateway with <code>arpspoof</code>', 'Start packet sniffing with <code>ettercap</code>', 'Strip HTTPS with <code>sslstrip</code>', 'Capture traffic with <code>tcpdump</code>', 'Extract tokens with <code>ferret</code>'], context: 'NSA PRISM program intercepted internet communications. MITM attacks are common on public WiFi.' },
+    7: { title: 'DNS Poisoning', obj: 'Manipulate DNS records to redirect victims to malicious sites.', learn: ['DNS zone transfers with <code>dig</code>', 'DNS spoofing with <code>dnschef</code>', 'Cache poisoning techniques', 'Website cloning'], steps: ['Perform zone transfer with <code>dig axfr</code>', 'Set up DNS proxy with <code>dnschef</code>', 'Poison DNS cache with <code>dnspoisoner</code>', 'Clone target site with <code>httrack</code>', 'Harvest credentials with <code>harvest</code>', 'Access bank portal with stolen cookies'], context: 'In 2019, Sea Turtle hackers hijacked DNS records of 40+ organizations across 13 countries.' },
+    8: { title: 'Supply Chain Attack', obj: 'Compromise a software supply chain to reach enterprise targets.', learn: ['Package registry manipulation', 'Backdoor creation with <code>msfvenom</code>', 'CI/CD pipeline attacks', 'Credential harvesting at scale'], steps: ['Publish trojanized npm package', 'Add backdoor with <code>msfvenom</code>', 'Deploy to CI/CD via <code>npm</code>', 'Set up listener with <code>nc</code>', 'Collect stolen data', 'Pivot to enterprise systems'], context: 'SolarWinds attack (2020) compromised 18,000+ organizations including US government agencies.' },
+    9: { title: 'Cross-Site Scripting (XSS)', obj: 'Inject malicious scripts into a web app to steal user sessions.', learn: ['Input field discovery with <code>dirb</code>', 'XSS payload crafting', 'Cookie theft techniques', 'Session hijacking'], steps: ['Find input fields with <code>dirb</code>', 'Test reflected XSS with <code>curl</code>', 'Craft cookie stealer with <code>python3</code>', 'Deploy stored XSS via <code>curl POST</code>', 'Capture cookies with <code>nc</code>', 'Take over admin account with stolen session'], context: 'XSS is in the OWASP Top 10. British Airways was fined $230M after an XSS-based attack exposed 380K cards.' },
+    10: { title: 'Rogue Access Point', obj: 'Set up a fake WiFi hotspot to intercept wireless traffic.', learn: ['WiFi scanning with <code>airodump-ng</code>', 'Rogue AP setup with <code>hostapd-mana</code>', 'DHCP/DNS services with <code>dnsmasq</code>', 'Traffic interception'], steps: ['Scan networks with <code>airodump-ng</code>', 'Create rogue AP with <code>hostapd-mana</code>', 'Start DHCP with <code>dnsmasq</code>', 'Route traffic with <code>iptables</code>', 'Capture traffic with <code>tshark</code>', 'Steal credentials from captured packets'], context: 'Pineapple WiFi devices are used by pentesters and attackers alike on public networks.' },
+    11: { title: 'Rainbow Table Attack', obj: 'Crack password hashes using precomputed rainbow tables.', learn: ['Hash identification with <code>hashid</code>', 'Rainbow table attacks with <code>rcrack</code>', 'Dictionary attacks with <code>hashcat</code>', 'Password cracking strategies'], steps: ['Dump password hashes with <code>mysqldump</code>', 'Identify hash types with <code>hashid</code>', 'Run rainbow tables with <code>rcrack</code>', 'Use <code>hashcat</code> for remaining hashes', 'Crack admin passwords with <code>john</code>', 'Access systems with cracked credentials'], context: 'LinkedIn breach (2012) leaked 117M hashed passwords. 60% were cracked within weeks using rainbow tables.' },
+    12: { title: 'Social Engineering', obj: 'Use psychological manipulation to gain unauthorized access.', learn: ['OSINT with <code>maltego</code>', 'Phishing campaigns with <code>gophish</code>', 'Vishing (phone-based SE)', 'Pretexting techniques'], steps: ['Gather intel with <code>maltego</code>', 'Build phishing campaign with <code>gophish</code>', 'Execute vishing call with <code>spoofcard</code>', 'Brute force with <code>hydra</code>', 'Access AD with <code>ldapsearch</code>', 'Exfiltrate via <code>smbclient</code>'], context: 'Kevin Mitnick was the world\'s most wanted hacker — he primarily used social engineering, not code.' },
+    13: { title: 'Cryptojacking', obj: 'Deploy cryptocurrency miners on compromised servers.', learn: ['Brute force SSH with <code>hydra</code>', 'Persistence with <code>crontab</code>', 'Crypto mining setup', 'Process hiding techniques'], steps: ['Scan for SSH services with <code>nmap</code>', 'Brute force login with <code>hydra</code>', 'Download miner with <code>curl</code>', 'Configure and start mining', 'Add to crontab for persistence', 'Monitor mining pool revenue'], context: 'Tesla\'s cloud servers were cryptojacked in 2018. Cryptojacking increased 400% in 2022.' },
+    14: { title: 'Backdoor Installation', obj: 'Install persistent backdoors on a compromised system.', learn: ['Vulnerability scanning', 'Exploit frameworks with <code>msfconsole</code>', 'Backdoor persistence', 'SSH key planting'], steps: ['Scan for vulnerabilities with <code>nmap</code>', 'Find exploits with <code>searchsploit</code>', 'Launch exploit with <code>msfconsole</code>', 'Install backdoor from meterpreter', 'Plant SSH keys for persistence', 'Check persistence and cleanup'], context: 'APT groups like Lazarus install backdoors that persist for years undetected.' },
+    15: { title: 'Privilege Escalation', obj: 'Escalate from low-privilege user to root/admin access.', learn: ['PrivEsc enumeration with <code>linpeas.sh</code>', 'SUID exploitation', 'Password cracking with <code>john</code>', 'Shadow file parsing'], steps: ['Run enum script with <code>linpeas.sh</code>', 'Find SUID binaries', 'Exploit SUID to get root', 'Dump shadow file with <code>unshadow</code>', 'Crack passwords with <code>john</code>', 'Add persistence as root'], context: 'Dirty COW (CVE-2016-5195) was a Linux kernel PrivEsc that affected servers for 9 years.' },
+    16: { title: 'Session Hijacking', obj: 'Steal active web sessions via network sniffing.', learn: ['ARP spoofing with <code>arpspoof</code>', 'Packet capture with <code>wireshark</code>', 'Token extraction with <code>ferret</code>', 'Session replay with <code>hamster</code>'], steps: ['ARP spoof the network', 'Capture traffic with <code>wireshark</code>', 'Extract tokens with <code>ferret</code>', 'Sidejack sessions with <code>hamster</code>', 'Access admin panel with stolen session', 'Exfiltrate data via <code>curl</code>'], context: 'Firesheep (2010) demonstrated session hijacking on public WiFi, leading to HTTPS adoption.' },
+    17: { title: 'Spyware & Keyloggers', obj: 'Deploy spyware to monitor and exfiltrate user activity.', learn: ['Payload crafting with <code>msfvenom</code>', 'C2 frameworks', 'Keylogging techniques', 'Data exfiltration'], steps: ['Craft spyware payload with <code>msfvenom</code>', 'Set up C2 listener', 'Send spear-phishing email', 'Access victim via meterpreter', 'Deploy keylogger', 'Exfiltrate captured data'], context: 'Pegasus spyware by NSO Group was used to monitor journalists and activists in 45+ countries.' },
+    18: { title: 'Evil Twin Attack', obj: 'Create a cloned WiFi access point with captive portal.', learn: ['WiFi deauth with <code>aireplay-ng</code>', 'Evil twin with <code>fluxion</code>', 'Captive portal creation', 'Credential capture'], steps: ['Scan for targets with <code>airodump-ng</code>', 'Deauth clients with <code>aireplay-ng</code>', 'Launch evil twin with <code>fluxion</code>', 'Set up captive portal', 'Capture WPA passwords', 'Connect to real network with stolen credentials'], context: 'Evil twin attacks are extremely effective at airports, hotels, and coffee shops.' },
+    19: { title: 'WPA Handshake Capture', obj: 'Capture and crack a WPA 4-way handshake.', learn: ['Monitor mode with <code>airmon-ng</code>', 'Handshake capture with <code>airodump-ng</code>', 'Deauth attacks', 'WPA cracking with <code>aircrack-ng</code>'], steps: ['Enable monitor mode with <code>airmon-ng</code>', 'Capture traffic with <code>airodump-ng</code>', 'Send deauth with <code>aireplay-ng</code>', 'Verify handshake capture', 'Crack with <code>aircrack-ng</code>', 'Connect with cracked password'], context: 'KRACK attack (2017) showed fundamental weaknesses in WPA2 protocol affecting billions of devices.' },
+    20: { title: 'Pass the Hash', obj: 'Use stolen NTLM hashes for lateral movement without cracking them.', learn: ['Hash dumping with <code>mimikatz</code>', 'Pass-the-hash with <code>crackmapexec</code>', 'Impacket tools', 'Golden ticket creation'], steps: ['Dump hashes with <code>mimikatz</code>', 'Test hashes with <code>crackmapexec</code>', 'Get shell with <code>psexec.py</code>', 'Dump domain secrets with <code>secretsdump.py</code>', 'Create golden ticket with <code>ticketer.py</code>', 'Access domain controller'], context: 'NotPetya (2017) used pass-the-hash and EternalBlue to spread through corporate networks.' },
+    21: { title: 'Botnet C&C', obj: 'Build and manage a botnet command-and-control infrastructure.', learn: ['C2 frameworks with <code>covenant</code>', 'Bot management', 'DDoS orchestration', 'Distributed attacks'], steps: ['Set up C2 server', 'Generate implants with <code>covenant</code>', 'Deploy to compromised hosts', 'Enumerate bot network', 'Issue distributed commands', 'Launch coordinated attack'], context: 'Mirai botnet (2016) infected 600K+ IoT devices and took down DNS provider Dyn.' },
+    22: { title: 'DLL Injection', obj: 'Inject malicious DLLs into running Windows processes.', learn: ['Process enumeration with <code>tasklist</code>', 'DLL payload creation', 'Injection via <code>rundll32.exe</code>', 'Process migration'], steps: ['List processes with <code>tasklist</code>', 'Create DLL payload with <code>msfvenom</code>', 'Inject DLL via <code>rundll32.exe</code>', 'Migrate to svchost.exe', 'Dump credentials', 'Clear event logs'], context: 'Stuxnet used DLL injection to manipulate SCADA systems and destroy Iranian nuclear centrifuges.' },
+    23: { title: 'SSRF Attack', obj: 'Exploit server-side request forgery to access internal resources.', learn: ['SSRF testing with <code>burpsuite</code>', 'AWS metadata exploitation', 'Internal service discovery', 'Cloud credential theft'], steps: ['Scan with <code>nmap</code>', 'Test SSRF with <code>burpsuite</code>', 'Access AWS metadata endpoint', 'Extract IAM credentials', 'Access S3 buckets with <code>aws</code> CLI', 'Exfiltrate data with <code>rclone</code>'], context: 'Capital One breach (2019) used SSRF to access AWS metadata and steal 106M customer records.' },
+    24: { title: 'Advanced Ransomware', obj: 'Execute a double-extortion ransomware attack.', learn: ['RDP exploitation', 'Data exfiltration before encryption', 'Volume shadow deletion', 'Ransom negotiation'], steps: ['Brute force RDP with <code>hydra</code>', 'Enumerate shares with <code>smbclient</code>', 'Exfiltrate data with <code>rclone</code>', 'Delete backups with <code>vssadmin</code>', 'Deploy ransomware binary', 'Cover tracks'], context: 'Colonial Pipeline (2021) paid $4.4M ransom. Double extortion is now used in 70% of ransomware attacks.' },
+    25: { title: 'Kerberoasting', obj: 'Extract and crack Kerberos service tickets for domain access.', learn: ['AD enumeration with <code>bloodhound</code>', 'SPN scanning with <code>GetUserSPNs.py</code>', 'Ticket cracking', 'Domain admin escalation'], steps: ['Enumerate AD with <code>bloodhound-python</code>', 'Find SPNs with <code>GetUserSPNs.py</code>', 'Crack tickets with <code>hashcat</code>', 'Access service as admin', 'Dump domain secrets', 'Create golden ticket'], context: 'Kerberoasting requires only a domain user account and can compromise entire AD forests.' },
+    26: { title: 'Physical Device Cloning', obj: 'Clone a physical device and extract credentials from the image.', learn: ['Disk imaging with <code>dd</code>', 'Loop mounting with <code>losetup</code>', 'File recovery with <code>photorec</code>', 'Credential extraction'], steps: ['Create disk image with <code>dd</code>', 'Mount image with <code>losetup</code>', 'Recover files with <code>photorec</code>', 'Extract passwords with <code>lazagne.py</code>', 'Crack found hashes', 'Access online accounts'], context: 'Physical access attacks are a major concern for government agencies and high-security facilities.' },
+    27: { title: 'Watering Hole Attack', obj: 'Compromise a trusted website to target specific organizations.', learn: ['Web vulnerability scanning', 'Exploit injection', 'C2 beacon deployment', 'Targeted attacks'], steps: ['Scan target website with <code>nmap</code>', 'Find vulnerabilities with <code>burpsuite</code>', 'Inject exploit code', 'Set up C2 with <code>covenant</code>', 'Wait for target employees to visit', 'Establish persistent access'], context: 'APT groups like Lazarus use watering hole attacks to target defense and finance sectors.' },
+    28: { title: 'Advanced Insider Attack', obj: 'Use legitimate access to steal data with anti-forensics techniques.', learn: ['Database querying', 'Steganography with <code>steghide</code>', 'Encrypted volumes with <code>veracrypt</code>', 'Anti-forensics'], steps: ['Query customer database', 'Hide data with <code>steghide</code>', 'Create encrypted volume with <code>veracrypt</code>', 'Transfer via personal email', 'Shred evidence files', 'Clear audit logs'], context: 'A Tesla employee stole trade secrets by exfiltrating data through personal cloud storage in 2023.' },
+    29: { title: 'Zero-Day Exploitation', obj: 'Discover and exploit an unknown vulnerability.', learn: ['Fuzzing with <code>afl-fuzz</code>', 'Crash analysis with <code>gdb</code>', 'ROP chain building with <code>ropper</code>', 'Exploit development'], steps: ['Fuzz application with <code>afl-fuzz</code>', 'Analyze crash with <code>gdb</code>', 'Find ROP gadgets with <code>ropper</code>', 'Build exploit payload', 'Deploy reverse shell', 'Patch and persist'], context: 'Log4Shell (2021) was a zero-day in Log4j that affected millions of servers worldwide.' },
+    30: { title: 'Living Off the Land', obj: 'Use only built-in Windows tools (LOLBins) to avoid detection.', learn: ['File download with <code>certutil</code>', 'Remote execution with <code>wmic</code>', 'Persistence with <code>schtasks</code>', 'Lateral movement with <code>psexec</code>'], steps: ['Download payload with <code>certutil</code>', 'Execute via <code>wmic</code>', 'Add persistence with <code>schtasks</code>', 'Move laterally with <code>psexec</code>', 'Exfiltrate via <code>powershell</code> DNS', 'Clear logs with <code>wevtutil</code>'], context: 'APT29 (Cozy Bear) extensively uses LOLBins to blend in with normal Windows operations.' },
+};
+
+function renderLevelGuide() {
+    const panel = document.getElementById('level-guide-panel');
+    if (!panel || !currentScenario) { if (panel) panel.style.display = 'none'; return; }
+
+    // Use DB guide or JS fallback
+    const dbGuide = currentScenario.guide;
+    const jsGuide = scenarioGuides[currentScenario.id];
+
+    if (dbGuide) {
+        panel.style.display = 'block';
+        panel.innerHTML = `
+            <div class="level-guide-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                <h3>How to Clear This Level</h3>
+                <span class="intel-toggle">▼</span>
+            </div>
+            <div class="level-guide-body">${dbGuide}</div>`;
+    } else if (jsGuide) {
+        panel.style.display = 'block';
+        panel.innerHTML = `
+            <div class="level-guide-header" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">
+                <h3>How to Clear This Level</h3>
+                <span class="intel-toggle">▼</span>
+            </div>
+            <div class="level-guide-body">
+                <h4>Objective</h4><p>${jsGuide.obj}</p>
+                <h4>What You'll Learn</h4><ul>${jsGuide.learn.map(l => '<li>' + l + '</li>').join('')}</ul>
+                <h4>Step-by-Step Guide</h4><ul>${jsGuide.steps.map((s, i) => '<li>Step ' + (i + 1) + ': ' + s + '</li>').join('')}</ul>
+                <h4>Real-World Context</h4><p>${jsGuide.context}</p>
+            </div>`;
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
 function renderAttackMode() {
     renderAttackSteps();
     renderCompanyIntel();
+    renderLevelGuide();
     renderAttackChain();
     loadNetworkDiagram();
 
@@ -495,8 +577,31 @@ async function handleAttackCommand(cmd) {
         return;
     }
 
-    const isCorrect = cmd.trim().toLowerCase() === currentAllowed.cmd.trim().toLowerCase() ||
-        cmd.trim() === currentAllowed.cmd.trim();
+    // ===== Exploratory Command Matching =====
+    // Users can explore commands freely — we guide them, not punish them
+    const userCmd = cmd.trim().toLowerCase().replace(/\s+/g, ' ');
+    const expectedCmd = currentAllowed.cmd.trim().toLowerCase().replace(/\s+/g, ' ');
+    const userTokens = userCmd.split(/\s+/);
+    const expectedTokens = expectedCmd.split(/\s+/);
+    const userTool = userTokens[0];
+    const expectedTool = expectedTokens[0];
+
+    // Extract key parts from expected command
+    const expectedFlags = expectedTokens.filter(t => t.startsWith('-') || t.startsWith('/'));
+    const expectedArgs = expectedTokens.filter(t => !t.startsWith('-') && t !== expectedTool && t.length > 1);
+
+    // Check what the user got right
+    const toolCorrect = userTool === expectedTool;
+    const userFlags = userTokens.filter(t => t.startsWith('-') || t.startsWith('/'));
+    const matchedFlags = expectedFlags.filter(f => userCmd.includes(f));
+    const matchedArgs = expectedArgs.filter(a => userCmd.includes(a));
+    const flagRatio = expectedFlags.length > 0 ? matchedFlags.length / expectedFlags.length : 1;
+    const argRatio = expectedArgs.length > 0 ? matchedArgs.length / expectedArgs.length : 1;
+
+    // Accept if: right tool + enough flags/args (50%+ each), OR exact match
+    const isCorrect = (userCmd === expectedCmd) ||
+        (toolCorrect && flagRatio >= 0.5 && argRatio >= 0.4) ||
+        (toolCorrect && stepFailCount >= 2); // Accept any attempt with right tool after 2 fails
 
     if (!isCorrect) {
         stepFailCount++;
@@ -509,15 +614,38 @@ async function handleAttackCommand(cmd) {
             output.scrollTop = output.scrollHeight;
             return;
         }
-        if (stepFailCount >= 3) {
-            output.innerHTML += `<div class="error-reaction wrong-cmd">
-                <span class="error-mascot">😰</span>
-                <span class="mascot-text">Struggling? That's <strong>${stepFailCount}</strong> attempts. Type <strong>reveal</strong> or <strong>giveup</strong> to see the full command. (−50 XP penalty)</span>
+
+        // === Educational Feedback ===
+        let feedback = '';
+        if (!toolCorrect) {
+            // Wrong tool entirely — tell them which tool to use
+            feedback = `<div class="cmd-feedback">
+                <div class="feedback-wrong">Wrong tool: <code>${escapeHtml(userTool)}</code></div>
+                <div class="feedback-hint">This step needs <code>${escapeHtml(expectedTool)}</code> — ${currentAllowed.hint || 'check the hint!'}</div>
+                <div class="feedback-tip">Try: <code>${escapeHtml(expectedTool)} ...</code></div>
             </div>`;
         } else {
-            output.innerHTML += getMascotReaction('wrongCmd');
+            // Right tool! Explain generally what is missing without giving the exact answer away
+            const missingFlags = expectedFlags.filter(f => !userCmd.includes(f));
+            const missingArgs = expectedArgs.filter(a => !userCmd.includes(a));
+
+            feedback = `<div class="cmd-feedback">
+                <div class="feedback-right">Correct tool: <code>${escapeHtml(expectedTool)}</code></div>
+                ${missingFlags.length > 0 ? `<div class="feedback-hint">⚠️ Missing ${missingFlags.length} flag(s). Check the Command List!</div>` : ''}
+                ${missingArgs.length > 0 ? `<div class="feedback-hint">⚠️ Missing required argument/target.</div>` : ''}
+                ${stepFailCount >= 2 ? `<div class="feedback-tip">Almost! Try once more with the right tool — any reasonable attempt will be accepted.</div>` : ''}
+            </div>`;
+        }
+
+        output.innerHTML += feedback;
+
+        if (stepFailCount >= 3) {
+            output.innerHTML += `<div class="error-reaction wrong-cmd">
+                <span class="mascot-text">Struggling? Type <strong>reveal</strong> to see the answer (−50 XP), or just try <code>${escapeHtml(expectedTool)}</code> with any flags — we'll accept it!</span>
+            </div>`;
         }
         output.scrollTop = output.scrollHeight;
+        onCommandFailed();
         return;
     }
 
@@ -544,6 +672,7 @@ async function handleAttackCommand(cmd) {
 
     currentStep++;
     renderAttackChain();
+    onStepCompleted();
 
     if (currentStep < scenarioSteps.length) {
         const next = scenarioSteps[currentStep];
@@ -558,7 +687,9 @@ async function handleAttackCommand(cmd) {
         document.getElementById('current-step-title').textContent = '✅ Attack Complete';
         document.getElementById('current-step-description').textContent = 'All steps executed. Switch to Detect Mode to investigate.';
 
-        await awardXP(currentScenario.id);
+        // Award XP for completing attack mode (no banner here, banner shows on results screen)
+        await awardXP(currentScenario.id, false);
+        onScenarioCompleted();
     }
     output.scrollTop = output.scrollHeight;
 }
@@ -579,7 +710,7 @@ async function loadAttackLogs() {
 }
 
 // ===== XP & Achievements =====
-async function awardXP(scenarioId) {
+async function awardXP(scenarioId, showBanner = false) {
     if (!currentUser) return;
     const difficulty = currentScenario?.difficulty || 'Beginner';
     const xpMap = { 'Beginner': 100, 'Intermediate': 200, 'Advanced': 300 };
@@ -590,18 +721,22 @@ async function awardXP(scenarioId) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: currentUser.username, xp, scenario_id: scenarioId })
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         currentUser.xp = data.xp;
         currentUser.level = data.level;
+        currentUser.level_name = data.level_name;
         currentUser.completed_scenarios = JSON.stringify(data.completed_scenarios);
         localStorage.setItem('spectra_user', JSON.stringify(currentUser));
         updateHomeUserInfo();
 
-        // Show XP award on results
-        const xpDisplay = document.getElementById('xp-award-display');
-        if (xpDisplay) {
-            xpDisplay.style.display = 'block';
-            document.getElementById('xp-award-text').textContent = `+${xp} XP earned! Level ${data.level} — ${data.level_name}`;
+        // Show XP award banner (only when on results screen)
+        if (showBanner) {
+            const xpDisplay = document.getElementById('xp-award-display');
+            if (xpDisplay) {
+                xpDisplay.style.display = 'block';
+                document.getElementById('xp-award-text').textContent = `+${xp} XP earned! Level ${data.level} — ${data.level_name}`;
+            }
         }
 
         if (data.leveled_up) {
@@ -842,29 +977,67 @@ async function submitAnalysis() {
         return;
     }
 
+    const btn = document.getElementById('btn-submit-analysis');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing...'; }
+
     try {
-        const res = await fetch('/api/analyze', {
+        const res = await fetch('/api/analyze-logs', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: sessionId, analysis, findings, scenario_id: currentScenario?.id })
         });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const result = await res.json();
         showResults(result);
     } catch (e) {
         console.error('Error submitting analysis:', e);
-        showResults({ score: 0, correct_findings: {}, message: 'Error submitting analysis' });
+        showResults({ score: 0, correct_findings: {}, message: 'Error submitting analysis. Please try again.' });
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '📊 Submit Analysis'; }
     }
 }
 
-// Real-world case studies mapped to scenarios
+// Real-world case studies mapped to scenarios (multiple per scenario for variety)
 const caseStudies = {
-    1: { title: '2020 Twitter Spear Phishing', desc: 'Attackers socially engineered Twitter employees via phone phishing to gain access to internal tools. They hijacked 130+ high-profile accounts (Obama, Musk, Apple) to promote a Bitcoin scam, stealing $120K.', steps: ['Step 1 (Recon): Attackers researched Twitter employees on LinkedIn', 'Step 2 (Phishing email): Sent via phone — vishing attack on IT support', 'Step 3 (Credential capture): Gained VPN credentials for internal tools', 'Step 4 (Lateral access): Used admin panel to take over verified accounts'] },
-    2: { title: '2017 Equifax SQL Injection (CVE-2017-5638)', desc: 'Attackers exploited an Apache Struts vulnerability on Equifax servers. They accessed databases containing 147 million SSNs, birth dates, and credit data. Equifax paid $700M in settlements.', steps: ['Step 1-3 (Injection): Exploited input validation flaw in web framework', 'Step 4-5 (Data extraction): Queried credit history and PII tables', 'Step 6 (Exfiltration): Encrypted data exfiltrated over 76 days unnoticed'] },
-    3: { title: '2017 WannaCry Ransomware', desc: 'WannaCry spread via EternalBlue (SMB exploit leaked from NSA). It encrypted files on 200,000+ machines across 150 countries. NHS hospitals, FedEx, and Telefonica were severely impacted.', steps: ['Step 1-2 (Payload + delivery): EternalBlue exploit auto-propagated via port 445', 'Step 3-4 (Execution + spread): Self-replicating worm encrypted files on each machine', 'Step 5-6 (Encrypt + ransom): AES-256 encryption with $300 BTC ransom per machine'] },
-    4: { title: '2020 SolarWinds Insider/Supply Chain', desc: 'Though primarily a supply chain attack, the SolarWinds breach involved insider-level access. Attackers inserted SUNBURST malware into Orion updates, affecting 18,000 organizations including US government agencies.', steps: ['Step 1-2 (Access + extraction): Attackers had code-level access for months', 'Step 3-4 (Exfiltration): Data sent to attacker-controlled cloud infrastructure', 'Step 5-6 (Cover tracks): Mimicked legitimate SolarWinds traffic patterns'] },
-    5: { title: '2016 Dyn DDoS (Mirai Botnet)', desc: 'The Mirai botnet harnessed 600,000 IoT devices (cameras, DVRs) to flood Dyn DNS with 1.2 Tbps. Twitter, Netflix, Reddit, and GitHub went down for hours across the US East Coast.', steps: ['Step 1-2 (Recon + botnet): Mirai scanned for IoT devices with default passwords', 'Step 3-4 (SYN + HTTP flood): Multi-vector attack saturated Dyn infrastructure', 'Step 5-6 (Amplification): DNS amplification multiplied attack traffic 50x'] },
-    6: { title: '2015 Darkhotel APT (MITM)', desc: 'Darkhotel APT targeted executives at luxury hotels by compromising hotel WiFi. They used ARP spoofing and SSL stripping to intercept credentials and install keyloggers on business travelers laptops.', steps: ['Step 1-2 (Network + ARP): Compromised hotel WiFi routers for ARP spoofing', 'Step 3-5 (Capture + strip): Intercepted HTTPS traffic and harvested credentials', 'Step 6 (Session hijack): Used stolen sessions to access corporate email'] },
-    7: { title: '2019 Sea Turtle DNS Hijacking', desc: 'Sea Turtle (state-sponsored) targeted DNS registries and registrars across the Middle East. They modified DNS records to redirect traffic through attacker-controlled servers, intercepting credentials for government agencies.', steps: ['Step 1-3 (DNS compromise): Gained access to DNS registrars and poisoned records', 'Step 4-5 (Clone + harvest): Man-in-the-middle via cloned sites with valid SSL certs', 'Step 6 (Exploitation): Used stolen credentials for long-term espionage access'] },
-    8: { title: '2021 ua-parser-js NPM Supply Chain Attack', desc: 'The ua-parser-js package (7M weekly downloads) was hijacked via a compromised maintainer account. Attackers published versions containing cryptominers and password stealers, affecting thousands of projects.', steps: ['Step 1-2 (Target + compromise): Maintainer account lacked MFA protection', 'Step 3-4 (Inject + publish): Malicious postinstall script added to the package', 'Step 5-6 (Collect + pivot): Cryptominer + credential stealer deployed on install'] }
+    1: [
+        { title: '2020 Twitter Spear Phishing', desc: 'Attackers socially engineered Twitter employees via phone phishing to gain access to internal tools. They hijacked 130+ high-profile accounts (Obama, Musk, Apple) to promote a Bitcoin scam, stealing $120K.', steps: ['Step 1 (Recon): Attackers researched Twitter employees on LinkedIn', 'Step 2 (Phishing email): Sent via phone — vishing attack on IT support', 'Step 3 (Credential capture): Gained VPN credentials for internal tools', 'Step 4 (Lateral access): Used admin panel to take over verified accounts'] },
+        { title: '2023 MGM Resorts Social Engineering', desc: 'Scattered Spider group called MGM IT helpdesk pretending to be an employee. They convinced the helpdesk to reset MFA, gaining access to Okta and Azure AD. The attack cost MGM over $100M and shut down casino operations for 10 days.', steps: ['Step 1 (Recon): Scraped employee info from LinkedIn and social media', 'Step 2 (Vishing): Called helpdesk impersonating a found employee', 'Step 3 (MFA bypass): Got helpdesk to reset multi-factor authentication', 'Step 4 (Lateral movement): Pivoted from Okta to Azure AD to deploy ransomware'] },
+        { title: '2011 RSA SecurID Phishing', desc: 'Attackers sent a phishing email titled "2011 Recruitment Plan" with a malicious Excel attachment to RSA employees. The zero-day Flash exploit installed a backdoor, compromising 40 million SecurID tokens used by defense contractors worldwide.', steps: ['Step 1 (Recon): Identified low-level RSA employees as targets', 'Step 2 (Spear phish): Sent crafted Excel file exploiting CVE-2011-0609', 'Step 3 (Backdoor): Poison Ivy RAT installed via Flash zero-day', 'Step 4 (Exfiltration): SecurID seed data stolen, affecting Lockheed Martin and others'] }
+    ],
+    2: [
+        { title: '2017 Equifax SQL Injection (CVE-2017-5638)', desc: 'Attackers exploited an Apache Struts vulnerability on Equifax servers. They accessed databases containing 147 million SSNs, birth dates, and credit data. Equifax paid $700M in settlements.', steps: ['Step 1-3 (Injection): Exploited input validation flaw in web framework', 'Step 4-5 (Data extraction): Queried credit history and PII tables', 'Step 6 (Exfiltration): Encrypted data exfiltrated over 76 days unnoticed'] },
+        { title: '2023 MOVEit SQL Injection (CVE-2023-34362)', desc: 'Cl0p ransomware gang exploited a zero-day SQLi in MOVEit Transfer file sharing software. They stole data from 2,500+ organizations including Shell, BBC, British Airways, and US government agencies. Over 62 million individuals were affected.', steps: ['Step 1 (Reconnaissance): Cl0p identified MOVEit instances exposed to the internet', 'Step 2 (SQL injection): Exploited authentication bypass via crafted SQL payloads', 'Step 3 (Web shell): Deployed LEMURLOOT web shell for persistent access', 'Step 4 (Mass exfiltration): Automated data theft across thousands of victims simultaneously'] },
+        { title: '2014 Sony Pictures SQL Injection & Breach', desc: 'Guardians of Peace (GOP) hackers breached Sony Pictures using SQL injection combined with social engineering. They leaked unreleased films, executive emails, salary data, and SSNs of 47,000 employees. Estimated damage exceeded $100M.', steps: ['Step 1 (Initial access): SQL injection on web-facing Sony infrastructure', 'Step 2 (Privilege escalation): Gained domain admin credentials from dumped tables', 'Step 3 (Lateral movement): Spread through internal network using stolen credentials', 'Step 4 (Data destruction): Deployed wiper malware after exfiltrating 100TB of data'] }
+    ],
+    3: [
+        { title: '2017 WannaCry Ransomware', desc: 'WannaCry spread via EternalBlue (SMB exploit leaked from NSA). It encrypted files on 200,000+ machines across 150 countries. NHS hospitals, FedEx, and Telefonica were severely impacted.', steps: ['Step 1-2 (Payload + delivery): EternalBlue exploit auto-propagated via port 445', 'Step 3-4 (Execution + spread): Self-replicating worm encrypted files on each machine', 'Step 5-6 (Encrypt + ransom): AES-256 encryption with $300 BTC ransom per machine'] },
+        { title: '2021 Kaseya REvil Ransomware', desc: 'REvil exploited a zero-day in Kaseya VSA (managed service provider software) to push ransomware to 1,500+ businesses simultaneously via trusted software updates. They demanded $70M in Bitcoin — the largest ransom ever at the time.', steps: ['Step 1 (Supply chain): Exploited Kaseya VSA authentication bypass (CVE-2021-30116)', 'Step 2 (Payload delivery): Disguised ransomware as legitimate Kaseya update', 'Step 3 (Mass deployment): Automated encryption across 1,500 downstream businesses', 'Step 4 (Ransom): $70M demand; FBI later recovered $6M through key recovery'] },
+        { title: '2019 Norsk Hydro LockerGoga Ransomware', desc: 'LockerGoga ransomware hit aluminum manufacturer Norsk Hydro, forcing 35,000 employees across 40 countries to use pen and paper. The attack caused $71M in damages. The company refused to pay and rebuilt from backups.', steps: ['Step 1 (Initial access): Phishing email delivered trojan to employee workstation', 'Step 2 (Lateral movement): Attackers spent weeks mapping the network via Active Directory', 'Step 3 (Credential theft): Mimikatz harvested domain admin credentials', 'Step 4 (Encryption): LockerGoga deployed simultaneously across global infrastructure'] }
+    ],
+    4: [
+        { title: '2020 SolarWinds Insider/Supply Chain', desc: 'Though primarily a supply chain attack, the SolarWinds breach involved insider-level access. Attackers inserted SUNBURST malware into Orion updates, affecting 18,000 organizations including US government agencies.', steps: ['Step 1-2 (Access + extraction): Attackers had code-level access for months', 'Step 3-4 (Exfiltration): Data sent to attacker-controlled cloud infrastructure', 'Step 5-6 (Cover tracks): Mimicked legitimate SolarWinds traffic patterns'] },
+        { title: '2018 Tesla Insider Sabotage', desc: 'A disgruntled Tesla employee modified the Manufacturing Operating System source code and exported gigabytes of proprietary data to third parties. Elon Musk sent a company-wide email about the "extensive and damaging sabotage."', steps: ['Step 1 (Insider access): Employee had legitimate access to manufacturing systems', 'Step 2 (Code tampering): Modified production code causing manufacturing disruptions', 'Step 3 (Data exfiltration): Exported trade secrets to unknown external recipients', 'Step 4 (Cover-up): Created false usernames to disguise the changes'] },
+        { title: '2020 Shopify Insider Data Theft', desc: 'Two rogue Shopify support team members abused their internal access to steal customer transaction data from nearly 200 merchants. They accessed names, emails, addresses, and order details before being identified and terminated.', steps: ['Step 1 (Abuse of access): Support staff exploited legitimate internal tools', 'Step 2 (Data harvesting): Systematically accessed merchant customer databases', 'Step 3 (Exfiltration): Exported PII and transaction records over several weeks', 'Step 4 (Detection): Internal anomaly detection flagged unusual data access patterns'] }
+    ],
+    5: [
+        { title: '2016 Dyn DDoS (Mirai Botnet)', desc: 'The Mirai botnet harnessed 600,000 IoT devices (cameras, DVRs) to flood Dyn DNS with 1.2 Tbps. Twitter, Netflix, Reddit, and GitHub went down for hours across the US East Coast.', steps: ['Step 1-2 (Recon + botnet): Mirai scanned for IoT devices with default passwords', 'Step 3-4 (SYN + HTTP flood): Multi-vector attack saturated Dyn infrastructure', 'Step 5-6 (Amplification): DNS amplification multiplied attack traffic 50x'] },
+        { title: '2018 GitHub 1.35 Tbps DDoS', desc: 'GitHub was hit with the then-largest DDoS attack ever recorded at 1.35 Tbps using Memcached amplification. Attackers spoofed UDP packets to open Memcached servers which amplified traffic 51,000x. GitHub was down for only 10 minutes thanks to Akamai Prolexic mitigation.', steps: ['Step 1 (Recon): Identified thousands of misconfigured Memcached servers on port 11211', 'Step 2 (Spoofing): Sent spoofed UDP requests with GitHub\'s IP as source', 'Step 3 (Amplification): Memcached servers amplified each packet by 51,000x', 'Step 4 (Mitigation): Akamai absorbed 1.35 Tbps and rerouted traffic within minutes'] },
+        { title: '2020 AWS Shield DDoS (2.3 Tbps)', desc: 'An unnamed AWS customer was targeted with a 2.3 Tbps DDoS attack — the largest ever recorded. The attack used CLDAP reflection (Connection-less LDAP) to amplify traffic. AWS Shield Advanced mitigated it with zero customer impact.', steps: ['Step 1 (Target selection): Attacker identified high-value AWS-hosted service', 'Step 2 (CLDAP reflection): Exploited open LDAP servers for 56-70x amplification', 'Step 3 (Sustained attack): 2.3 Tbps sustained for several hours', 'Step 4 (Mitigation): AWS Shield scrubbed traffic at edge using anycast routing'] }
+    ],
+    6: [
+        { title: '2015 Darkhotel APT (MITM)', desc: 'Darkhotel APT targeted executives at luxury hotels by compromising hotel WiFi. They used ARP spoofing and SSL stripping to intercept credentials and install keyloggers on business travelers laptops.', steps: ['Step 1-2 (Network + ARP): Compromised hotel WiFi routers for ARP spoofing', 'Step 3-5 (Capture + strip): Intercepted HTTPS traffic and harvested credentials', 'Step 6 (Session hijack): Used stolen sessions to access corporate email'] },
+        { title: '2017 KRACK Attack (WPA2 MITM)', desc: 'Researchers discovered Key Reinstallation Attacks (KRACK) affecting ALL WPA2 WiFi implementations. Attackers within WiFi range could decrypt traffic, inject packets, and hijack TCP connections. Every WiFi device in the world was vulnerable.', steps: ['Step 1 (Proximity): Attacker positions within WiFi range of target network', 'Step 2 (Key reinstallation): Forces nonce reuse in WPA2 4-way handshake', 'Step 3 (Traffic decryption): Decrypts all WiFi traffic including HTTPS on Android/Linux', 'Step 4 (Injection): Injects malicious content into unencrypted HTTP connections'] },
+        { title: '2019 Capital One SSRF + MITM', desc: 'A former AWS employee exploited a misconfigured WAF to perform SSRF attacks on Capital One\'s cloud infrastructure. She accessed 100 million credit applications, 140,000 SSNs, and 80,000 bank account numbers via AWS metadata service.', steps: ['Step 1 (Recon): Identified misconfigured WAF allowing SSRF via crafted HTTP requests', 'Step 2 (SSRF): Queried AWS EC2 metadata service (169.254.169.254) for IAM credentials', 'Step 3 (Credential theft): Obtained temporary AWS access keys with S3 permissions', 'Step 4 (Data exfiltration): Downloaded 700+ S3 buckets containing customer PII'] }
+    ],
+    7: [
+        { title: '2019 Sea Turtle DNS Hijacking', desc: 'Sea Turtle (state-sponsored) targeted DNS registries and registrars across the Middle East. They modified DNS records to redirect traffic through attacker-controlled servers, intercepting credentials for government agencies.', steps: ['Step 1-3 (DNS compromise): Gained access to DNS registrars and poisoned records', 'Step 4-5 (Clone + harvest): Man-in-the-middle via cloned sites with valid SSL certs', 'Step 6 (Exploitation): Used stolen credentials for long-term espionage access'] },
+        { title: '2018 MyEtherWallet BGP/DNS Hijack', desc: 'Attackers hijacked Amazon Route 53 DNS via BGP leak to redirect MyEtherWallet.com users to a phishing site in Russia. They stole $17M in Ethereum in just 2 hours using a valid SSL certificate from a compromised CA.', steps: ['Step 1 (BGP hijack): Announced false BGP routes for Amazon DNS server IPs', 'Step 2 (DNS redirect): Poisoned DNS responses for myetherwallet.com', 'Step 3 (Phishing site): Served cloned wallet interface with valid SSL certificate', 'Step 4 (Theft): Harvested private keys and drained $17M in ETH within 2 hours'] },
+        { title: '2020 SolarWinds DNS Tunneling (SUNBURST)', desc: 'The SUNBURST backdoor used DNS queries to communicate with C2 servers, encoding stolen data into subdomain requests to avsvmcloud.com. The DNS-based C2 channel evaded nearly all security monitoring for 9 months.', steps: ['Step 1 (Beacon): Malware encoded victim identity into DNS CNAME queries', 'Step 2 (C2 channel): DNS responses directed malware to secondary C2 via HTTPS', 'Step 3 (Exfiltration): Sensitive data tunneled out via crafted DNS subdomain queries', 'Step 4 (Evasion): Traffic blended with legitimate Orion telemetry for 9+ months'] }
+    ],
+    8: [
+        { title: '2021 ua-parser-js NPM Supply Chain Attack', desc: 'The ua-parser-js package (7M weekly downloads) was hijacked via a compromised maintainer account. Attackers published versions containing cryptominers and password stealers, affecting thousands of projects.', steps: ['Step 1-2 (Target + compromise): Maintainer account lacked MFA protection', 'Step 3-4 (Inject + publish): Malicious postinstall script added to the package', 'Step 5-6 (Collect + pivot): Cryptominer + credential stealer deployed on install'] },
+        { title: '2021 Codecov Supply Chain Attack', desc: 'Attackers modified Codecov\'s Bash Uploader script to exfiltrate CI/CD environment variables (secrets, tokens, API keys) from 29,000 customers including Twitch, HashiCorp, and Confluent. The breach went undetected for 2 months.', steps: ['Step 1 (Initial compromise): Exploited a flaw in Codecov\'s Docker image build process', 'Step 2 (Script modification): Added a single line to exfiltrate env vars to attacker server', 'Step 3 (Silent collection): CI/CD secrets harvested from thousands of pipelines for 2 months', 'Step 4 (Downstream attacks): Stolen tokens used to access private repos and cloud infrastructure'] },
+        { title: '2022 PyPI & NPM Typosquatting Wave', desc: 'Attackers uploaded 200+ malicious packages to PyPI and NPM with names similar to popular libraries (e.g., "colourama" instead of "colorama"). These packages contained info-stealers targeting Discord tokens, browser credentials, and crypto wallets.', steps: ['Step 1 (Typosquatting): Created packages with misspelled names of popular libraries', 'Step 2 (Payload hiding): Obfuscated malicious code in setup.py/postinstall scripts', 'Step 3 (Auto-execution): Malware ran automatically on pip install / npm install', 'Step 4 (Data theft): Exfiltrated Discord tokens, browser passwords, and crypto wallet keys via webhooks'] }
+    ]
 };
 
 function showResults(result) {
@@ -892,9 +1065,10 @@ function showResults(result) {
         </div>
     `).join('');
 
-    // Real-world case study
-    const caseStudy = caseStudies[currentScenario?.id];
-    if (caseStudy) {
+    // Real-world case study — randomly pick one from the array
+    const studies = caseStudies[currentScenario?.id];
+    if (studies && studies.length > 0) {
+        const caseStudy = studies[Math.floor(Math.random() * studies.length)];
         const caseEl = document.getElementById('case-study-section');
         if (caseEl) {
             caseEl.style.display = 'block';
@@ -910,9 +1084,9 @@ function showResults(result) {
         }
     }
 
-    // XP for detect mode
-    if (score > 0 && currentScenario) {
-        awardXP(currentScenario.id);
+    // XP for detect mode — show banner on results screen
+    if (currentScenario) {
+        awardXP(currentScenario.id, true);
     }
 
     // Check perfect analyst
@@ -992,6 +1166,65 @@ const toolInfo = {
     'shred': { icon: '🗑️', name: 'SHRED', cat: 'Anti-Forensics', desc: 'Secure file deletion. Overwrites files multiple times to prevent forensic recovery of evidence.', syntax: 'shred -vfz -n 5 <file>', flags: { '-v': 'Verbose output', '-f': 'Force permissions', '-z': 'Final zero pass', '-n': 'Number of overwrite passes' } },
     'tor-browser': { icon: '🧅', name: 'TOR', cat: 'Anonymity', desc: 'Tor network browser. Routes traffic through multiple relays to hide attacker identity and location.', syntax: 'tor-browser --connect', flags: { '--connect': 'Establish Tor circuit', '--exit': 'Specify exit node', '--bridge': 'Use bridge relay' } },
     'vpn': { icon: '🛡️', name: 'VPN', cat: 'Anonymity', desc: 'Virtual Private Network. Encrypts traffic and masks IP address for anonymous operations.', syntax: 'vpn --connect <server>', flags: { '--connect': 'Connect to server', '--kill-switch': 'Block non-VPN traffic', '--protocol': 'VPN protocol (WireGuard/OpenVPN)' } },
+    // New scenario tools (9-30)
+    'python3': { icon: '🐍', name: 'PYTHON3', cat: 'Scripting', desc: 'Python interpreter. Used for exploit development, payload crafting, and automation of attack chains.', syntax: 'python3 -c "<code>"', flags: { '-c': 'Execute code string', '-m': 'Run module', '-u': 'Unbuffered output' } },
+    'airodump-ng': { icon: '📡', name: 'AIRODUMP-NG', cat: 'WiFi Recon', desc: 'Wireless network scanner. Captures 802.11 frames and lists nearby access points with client info.', syntax: 'airodump-ng <interface>', flags: { '-c': 'Channel to monitor', '--bssid': 'Filter by AP MAC', '-w': 'Output file prefix', '--band': 'Frequency band (a/b/g)' } },
+    'airmon-ng': { icon: '📻', name: 'AIRMON-NG', cat: 'WiFi Setup', desc: 'Wireless monitor mode manager. Puts WiFi adapters into monitor mode for packet capture.', syntax: 'airmon-ng start <iface>', flags: { 'start': 'Enable monitor mode', 'stop': 'Disable monitor mode', 'check': 'Check for interfering processes' } },
+    'aireplay-ng': { icon: '💥', name: 'AIREPLAY-NG', cat: 'WiFi Attack', desc: 'Wireless packet injection tool. Sends deauth frames to disconnect clients and force handshake capture.', syntax: 'aireplay-ng --deauth <count> -a <bssid>', flags: { '--deauth': 'Deauth frame count', '-a': 'Target AP BSSID', '-c': 'Target client MAC', '--fakeauth': 'Fake authentication' } },
+    'aircrack-ng': { icon: '🔓', name: 'AIRCRACK-NG', cat: 'WiFi Crack', desc: 'WPA/WPA2 key cracker. Performs dictionary attacks on captured 4-way handshakes to recover WiFi passwords.', syntax: 'aircrack-ng -w <wordlist> <capture>', flags: { '-w': 'Wordlist file', '-b': 'Target BSSID', '-l': 'Output key to file' } },
+    'fluxion': { icon: '👻', name: 'FLUXION', cat: 'WiFi Attack', desc: 'Evil twin attack framework. Creates fake APs with captive portals to harvest WPA credentials.', syntax: 'fluxion --target <ssid> --attack captive_portal', flags: { '--target': 'Target SSID', '--attack': 'Attack type', '--channel': 'Channel number' } },
+    'hostapd-mana': { icon: '📶', name: 'HOSTAPD-MANA', cat: 'Rogue AP', desc: 'Rogue access point tool. Creates fake WiFi hotspots with advanced credential interception capabilities.', syntax: 'hostapd-mana <config> --ssid <name>', flags: { '--ssid': 'Network name', '--channel': 'WiFi channel', '--wpa': 'Enable WPA' } },
+    'dnsmasq': { icon: '🌐', name: 'DNSMASQ', cat: 'Network', desc: 'Lightweight DNS/DHCP server. Assigns IPs and resolves DNS for clients on rogue networks.', syntax: 'dnsmasq --dhcp-range=<start>,<end>', flags: { '--dhcp-range': 'IP range to assign', '--interface': 'Network interface', '--no-daemon': 'Run in foreground' } },
+    'iptables': { icon: '🧱', name: 'IPTABLES', cat: 'Firewall', desc: 'Linux packet filter. Configures NAT rules to route victim traffic through attacker machine.', syntax: 'iptables -t nat -A PREROUTING ...', flags: { '-t': 'Table (nat/filter)', '-A': 'Append rule', '-j': 'Jump target', '--dport': 'Destination port' } },
+    'tshark': { icon: '🦈', name: 'TSHARK', cat: 'Analysis', desc: 'Command-line Wireshark. Extracts specific fields from packet captures for automated analysis.', syntax: 'tshark -r <pcap> -Y <filter>', flags: { '-r': 'Read pcap file', '-Y': 'Display filter', '-T': 'Output format', '-e': 'Field to extract' } },
+    'wireshark': { icon: '🦈', name: 'WIRESHARK', cat: 'Analysis', desc: 'Network protocol analyzer. Captures and inspects packets in real-time with deep protocol analysis.', syntax: 'wireshark -i <iface> -f <filter>', flags: { '-i': 'Capture interface', '-f': 'Capture filter', '-w': 'Write to file', '-k': 'Start capture immediately' } },
+    'mysqldump': { icon: '🗄️', name: 'MYSQLDUMP', cat: 'Exfil', desc: 'MySQL database export tool. Dumps database tables including password hashes for offline cracking.', syntax: 'mysqldump -u <user> <database>', flags: { '-u': 'Username', '-p': 'Prompt for password', '--single-transaction': 'Consistent snapshot' } },
+    'hashid': { icon: '🔎', name: 'HASHID', cat: 'Identify', desc: 'Hash type identifier. Detects the algorithm used to generate a hash (MD5, SHA, bcrypt, etc).', syntax: 'hashid -m <hash>', flags: { '-m': 'Show hashcat mode', '-j': 'Show John format', '-e': 'Extended analysis' } },
+    'rcrack': { icon: '🌈', name: 'RCRACK', cat: 'Cracking', desc: 'Rainbow table cracker. Looks up precomputed hash-plaintext pairs for instant password recovery.', syntax: 'rcrack <table_dir> -h <hashes>', flags: { '-h': 'Hash file to crack', '-l': 'Hash list file', '-f': 'Specific hash value' } },
+    'hydra': { icon: '🐉', name: 'HYDRA', cat: 'Brute Force', desc: 'Online password cracker. Tests credentials against live services (SSH, FTP, HTTP, RDP, etc).', syntax: 'hydra -L <users> -P <passwords> <target> <service>', flags: { '-L': 'Username list', '-P': 'Password list', '-t': 'Parallel tasks', '-vV': 'Verbose output' } },
+    'maltego': { icon: '🕵️', name: 'MALTEGO', cat: 'OSINT', desc: 'OSINT and link analysis platform. Maps relationships between people, domains, IPs, and organizations.', syntax: 'maltego --target <org> --transform <type>', flags: { '--target': 'Investigation target', '--transform': 'Data transform type', '--depth': 'Recursion depth' } },
+    'gophish': { icon: '🎣', name: 'GOPHISH', cat: 'Phishing', desc: 'Open-source phishing framework. Creates and manages phishing campaigns with tracking and reporting.', syntax: 'gophish --campaign <name>', flags: { '--campaign': 'Campaign name', '--template': 'Email template', '--targets': 'Target CSV file' } },
+    'spoofcard': { icon: '📞', name: 'SPOOFCARD', cat: 'Social Eng', desc: 'Caller ID spoofing tool. Disguises phone number to impersonate trusted callers for vishing attacks.', syntax: 'spoofcard --caller-id <number>', flags: { '--caller-id': 'Number to display', '--target': 'Number to call', '--record': 'Record the call' } },
+    'ldapsearch': { icon: '📒', name: 'LDAPSEARCH', cat: 'AD Recon', desc: 'LDAP query tool. Searches Active Directory for users, groups, and admin accounts.', syntax: 'ldapsearch -x -H <server> -b <base>', flags: { '-x': 'Simple auth', '-H': 'LDAP server URI', '-b': 'Search base DN', '-D': 'Bind DN' } },
+    'smbclient': { icon: '📁', name: 'SMBCLIENT', cat: 'File Access', desc: 'SMB/CIFS client. Connects to Windows file shares to browse and download files remotely.', syntax: 'smbclient //<host>/<share> -U <user>', flags: { '-U': 'Username', '-L': 'List shares', '-c': 'Run command', '--no-pass': 'No password' } },
+    'mimikatz': { icon: '🐱', name: 'MIMIKATZ', cat: 'Credential Dump', desc: 'Windows credential extraction tool. Dumps NTLM hashes, Kerberos tickets, and plaintext passwords from memory.', syntax: 'mimikatz "sekurlsa::logonpasswords"', flags: { 'privilege::debug': 'Enable debug privilege', 'sekurlsa::logonpasswords': 'Dump all passwords', 'lsadump::sam': 'Dump SAM database' } },
+    'crackmapexec': { icon: '🗺️', name: 'CRACKMAPEXEC', cat: 'Lateral', desc: 'Network pentesting tool. Tests credentials across multiple hosts for pass-the-hash and lateral movement.', syntax: 'crackmapexec smb <target> -u <user> -H <hash>', flags: { '-u': 'Username', '-H': 'NTLM hash', '--shares': 'List shares', '-x': 'Execute command' } },
+    'psexec.py': { icon: '🔧', name: 'PSEXEC.PY', cat: 'Remote Exec', desc: 'Impacket remote execution tool. Gets SYSTEM shell on remote Windows machines via SMB.', syntax: 'psexec.py <user>@<target>', flags: { '-hashes': 'NTLM hash (LM:NT)', '-k': 'Kerberos auth', '-dc-ip': 'Domain controller IP' } },
+    'secretsdump.py': { icon: '🔐', name: 'SECRETSDUMP', cat: 'AD Dump', desc: 'Impacket AD secrets dumper. Extracts NTDS.dit, SAM hashes, and cached credentials remotely.', syntax: 'secretsdump.py <user>@<target>', flags: { '-hashes': 'NTLM hash', '-just-dc': 'Only NTDS.dit', '-system': 'SYSTEM hive' } },
+    'ticketer.py': { icon: '🎟️', name: 'TICKETER', cat: 'Kerberos', desc: 'Kerberos ticket forger. Creates golden/silver tickets for persistent domain access.', syntax: 'ticketer.py -nthash <hash> -domain <dom>', flags: { '-nthash': 'krbtgt NTLM hash', '-domain-sid': 'Domain SID', '-domain': 'Domain name' } },
+    'bloodhound-python': { icon: '🩸', name: 'BLOODHOUND', cat: 'AD Recon', desc: 'Active Directory enumeration tool. Maps attack paths from user to domain admin via graph analysis.', syntax: 'bloodhound-python -c all -d <domain>', flags: { '-c': 'Collection method', '-d': 'Target domain', '-u': 'Username', '-p': 'Password' } },
+    'GetUserSPNs.py': { icon: '🎯', name: 'GETUSERSPNS', cat: 'Kerberoast', desc: 'Impacket SPN finder. Discovers service accounts and requests crackable Kerberos TGS tickets.', syntax: 'GetUserSPNs.py <domain>/<user>:<pass>', flags: { '-dc-ip': 'Domain controller IP', '-request': 'Request TGS tickets', '-outputfile': 'Save tickets to file' } },
+    'linpeas.sh': { icon: '🐧', name: 'LINPEAS', cat: 'PrivEsc Enum', desc: 'Linux privilege escalation scanner. Finds SUID binaries, writable files, and kernel exploits automatically.', syntax: 'linpeas.sh | tee output.txt', flags: { '-a': 'All checks', '-s': 'Silent mode', '-P': 'Password to test' } },
+    'john': { icon: '🔨', name: 'JOHN', cat: 'Cracking', desc: 'John the Ripper password cracker. Cracks password hashes using wordlists and brute force rules.', syntax: 'john --wordlist=<file> <hashes>', flags: { '--wordlist': 'Dictionary file', '--rules': 'Mangling rules', '--show': 'Show cracked', '--format': 'Hash format' } },
+    'searchsploit': { icon: '🔍', name: 'SEARCHSPLOIT', cat: 'Exploit DB', desc: 'Exploit-DB search tool. Finds public exploits for specific software versions and CVEs.', syntax: 'searchsploit <keyword>', flags: { '-w': 'Show URL', '-m': 'Copy exploit to current dir', '--cve': 'Search by CVE' } },
+    'unshadow': { icon: '👤', name: 'UNSHADOW', cat: 'Cracking', desc: 'Combines /etc/passwd and /etc/shadow into a single file for password cracking tools.', syntax: 'unshadow passwd shadow > hashes.txt', flags: {} },
+    'tasklist': { icon: '📋', name: 'TASKLIST', cat: 'Windows Recon', desc: 'Windows process lister. Displays running processes with PID, memory usage, and service info.', syntax: 'tasklist /v /fi "<filter>"', flags: { '/v': 'Verbose output', '/fi': 'Filter criteria', '/svc': 'Show services per process' } },
+    'rundll32.exe': { icon: '⚙️', name: 'RUNDLL32', cat: 'LOLBin', desc: 'Windows DLL loader. Legitimately loads DLLs — abused to execute malicious DLL payloads.', syntax: 'rundll32.exe <dll>,<entry>', flags: {} },
+    'certutil': { icon: '📜', name: 'CERTUTIL', cat: 'LOLBin', desc: 'Windows certificate utility. Abused as a LOLBin to download files and encode/decode data.', syntax: 'certutil -urlcache -f <url> <output>', flags: { '-urlcache': 'URL cache mode', '-split': 'Split output', '-f': 'Force overwrite', '-encode': 'Base64 encode' } },
+    'wevtutil': { icon: '📝', name: 'WEVTUTIL', cat: 'Anti-Forensics', desc: 'Windows event log utility. Used to clear security and system logs to cover attack tracks.', syntax: 'wevtutil cl <logname>', flags: { 'cl': 'Clear log', 'el': 'Enumerate logs', 'qe': 'Query events' } },
+    'burpsuite': { icon: '🔎', name: 'BURPSUITE', cat: 'Web Proxy', desc: 'Web application security testing proxy. Intercepts and modifies HTTP requests for vulnerability scanning.', syntax: 'burpsuite --proxy --target <url>', flags: { '--proxy': 'Proxy mode', '--target': 'Target URL', '--scan': 'Active scan' } },
+    'aws': { icon: '☁️', name: 'AWS CLI', cat: 'Cloud', desc: 'Amazon Web Services CLI. Manages AWS resources — used with stolen credentials for cloud exploitation.', syntax: 'aws s3 ls s3://<bucket>', flags: { 's3': 'S3 commands', '--profile': 'Named profile', 'ls': 'List contents', 'cp': 'Copy files' } },
+    'rclone': { icon: '🔄', name: 'RCLONE', cat: 'Exfil', desc: 'Cloud storage sync tool. Transfers data to cloud remotes — abused for data exfiltration at scale.', syntax: 'rclone copy <src> <remote>:<path>', flags: { 'copy': 'Copy files', '--transfers': 'Parallel transfers', '--bwlimit': 'Bandwidth limit' } },
+    'vssadmin': { icon: '💾', name: 'VSSADMIN', cat: 'Destruction', desc: 'Volume Shadow Copy admin. Ransomware uses it to delete backup snapshots before encryption.', syntax: 'vssadmin delete shadows /all /quiet', flags: { 'delete shadows': 'Delete snapshots', '/all': 'All shadow copies', '/quiet': 'No confirmation' } },
+    'steghide': { icon: '🖼️', name: 'STEGHIDE', cat: 'Steganography', desc: 'Steganography tool. Hides data inside image and audio files to evade DLP detection.', syntax: 'steghide embed -cf <cover> -ef <data>', flags: { 'embed': 'Hide data in file', 'extract': 'Extract hidden data', '-cf': 'Cover file', '-ef': 'Embedded file', '-p': 'Passphrase' } },
+    'veracrypt': { icon: '🔒', name: 'VERACRYPT', cat: 'Encryption', desc: 'Disk encryption with hidden volumes. Provides plausible deniability for stolen data storage.', syntax: 'veracrypt --create <volume>', flags: { '--create': 'Create volume', '--mount': 'Mount volume', '--encryption': 'Algorithm (AES, Twofish)' } },
+    'photorec': { icon: '📸', name: 'PHOTOREC', cat: 'Recovery', desc: 'File recovery tool. Recovers deleted files from disk images — useful for both attackers and forensics.', syntax: 'photorec <disk_image>', flags: { '/d': 'Output directory', '/cmd': 'Command mode' } },
+    'lazagne.py': { icon: '🔑', name: 'LAZAGNE', cat: 'Credential Dump', desc: 'Password recovery tool. Extracts saved passwords from browsers, email clients, and applications.', syntax: 'python3 lazagne.py all', flags: { 'all': 'All modules', 'browsers': 'Browser passwords only', '-oJ': 'JSON output' } },
+    'dd': { icon: '💿', name: 'DD', cat: 'Disk Clone', desc: 'Disk duplicator. Creates bit-for-bit copies of storage devices for forensic analysis or cloning.', syntax: 'dd if=<src> of=<dest> bs=4M', flags: { 'if': 'Input file/device', 'of': 'Output file', 'bs': 'Block size', 'status': 'Show progress' } },
+    'losetup': { icon: '🔗', name: 'LOSETUP', cat: 'Disk Mount', desc: 'Loop device manager. Associates disk image files with loop devices for mounting and analysis.', syntax: 'losetup -fP <image>', flags: { '-f': 'Find free device', '-P': 'Scan partitions', '-d': 'Detach device' } },
+    'afl-fuzz': { icon: '🐛', name: 'AFL-FUZZ', cat: 'Fuzzing', desc: 'American Fuzzy Lop — coverage-guided fuzzer. Discovers crashes and vulnerabilities in binaries.', syntax: 'afl-fuzz -i <input> -o <output> -- <binary>', flags: { '-i': 'Input corpus dir', '-o': 'Output dir', '-m': 'Memory limit' } },
+    'gdb': { icon: '🔬', name: 'GDB', cat: 'Debugging', desc: 'GNU debugger. Analyzes crashes, inspects memory, and develops exploits from vulnerability data.', syntax: 'gdb <binary> <core_dump>', flags: { '-ex': 'Execute command', 'bt': 'Backtrace', 'info registers': 'Show CPU registers' } },
+    'ropper': { icon: '🧩', name: 'ROPPER', cat: 'Exploit Dev', desc: 'ROP gadget finder. Searches binaries for return-oriented programming gadgets to bypass DEP/NX.', syntax: 'ropper --file <binary> --search <gadget>', flags: { '--file': 'Target binary', '--search': 'Search for gadget', '--chain': 'Generate ROP chain' } },
+    'wmic': { icon: '🖥️', name: 'WMIC', cat: 'LOLBin', desc: 'Windows Management Instrumentation CLI. Executes commands remotely using legitimate Windows infrastructure.', syntax: 'wmic process call create "<cmd>"', flags: { 'process': 'Process management', 'call create': 'Start new process', '/node': 'Remote computer' } },
+    'schtasks': { icon: '⏰', name: 'SCHTASKS', cat: 'Persistence', desc: 'Windows task scheduler CLI. Creates scheduled tasks for persistent malware execution on boot/logon.', syntax: 'schtasks /create /tn <name> /tr <cmd>', flags: { '/create': 'Create task', '/tn': 'Task name', '/tr': 'Command to run', '/sc': 'Schedule type', '/ru': 'Run as user' } },
+    'psexec': { icon: '🔧', name: 'PSEXEC', cat: 'Remote Exec', desc: 'Sysinternals remote execution tool. Runs commands on remote Windows systems via admin shares.', syntax: 'psexec \\\\<host> <command>', flags: { '-u': 'Username', '-p': 'Password', '-s': 'Run as SYSTEM', '-c': 'Copy program' } },
+    'powershell': { icon: '⚡', name: 'POWERSHELL', cat: 'LOLBin', desc: 'Windows scripting shell. Powerful tool abused for fileless attacks, download cradles, and AD enumeration.', syntax: 'powershell -c "<command>"', flags: { '-c': 'Execute command', '-ep bypass': 'Skip execution policy', '-enc': 'Base64 encoded command', '-nop': 'No profile' } },
+    'nmcli': { icon: '📡', name: 'NMCLI', cat: 'Network', desc: 'NetworkManager CLI. Manages WiFi connections — used to connect to networks with cracked credentials.', syntax: 'nmcli device wifi connect <ssid>', flags: { 'connect': 'Connect to network', 'password': 'WiFi password', 'list': 'List available networks' } },
+    'netsh': { icon: '🌐', name: 'NETSH', cat: 'Windows Net', desc: 'Windows network configuration CLI. Extracts stored WiFi profiles and passwords from Windows systems.', syntax: 'netsh wlan show profiles', flags: { 'show profiles': 'List WiFi profiles', 'key=clear': 'Show password', 'export': 'Export profile XML' } },
+    'covenant': { icon: '📡', name: 'COVENANT', cat: 'C2 Framework', desc: '.NET C2 framework. Manages implants with encrypted HTTPS communication for stealthy post-exploitation.', syntax: 'covenant --listeners add', flags: { '--listeners': 'Manage listeners', '--interact': 'Control beacon', '--command': 'Run command on target' } },
+    'botnet-cli': { icon: '🤖', name: 'BOTNET-CLI', cat: 'C2', desc: 'Botnet management CLI. Enumerates bots, issues commands, and coordinates distributed attacks.', syntax: 'botnet-cli --command "<cmd>"', flags: { '--list-bots': 'Enumerate bots', '--command': 'Issue command', '--sort-by': 'Sort criteria' } },
+    'c2_server.py': { icon: '📡', name: 'C2 SERVER', cat: 'C2', desc: 'Custom C2 server. Receives beacons from compromised machines and dispatches attack commands.', syntax: 'python3 c2_server.py --port <port>', flags: { '--port': 'Listen port', '--ssl': 'Enable encryption', '--beacon-interval': 'Check-in interval' } },
+    'ransomware.exe': { icon: '🔒', name: 'RANSOMWARE', cat: 'Malware', desc: 'Advanced ransomware binary. Encrypts files with AES-256/RSA-2048 and drops ransom notes.', syntax: 'ransomware.exe --encrypt-all', flags: { '--encrypt-all': 'Encrypt everything', '--extension': 'Encrypted file ext', '--exclude': 'Skip directories' } },
 };
 
 function getToolCard(toolName, step) {
@@ -1038,24 +1271,71 @@ async function showCommandList() {
         const res = await fetch('/api/scenarios');
         const scenarios = await res.json();
         const content = document.getElementById('commands-content');
-        let html = '';
+        // Sort by difficulty
+        const diffOrder = { 'Beginner': 1, 'Intermediate': 2, 'Advanced': 3 };
+        scenarios.sort((a, b) => (diffOrder[a.difficulty] || 99) - (diffOrder[b.difficulty] || 99));
+        // Search bar
+        let html = `<div class="cmd-search-bar">
+            <input type="text" id="cmd-search-input" placeholder="Search commands, tools, scenarios..." oninput="filterCommands(this.value)">
+        </div>`;
         for (const s of scenarios) {
             const detRes = await fetch(`/api/scenario/${s.id}`);
             const detail = await detRes.json();
-            const cards = (detail.steps || []).map(step => {
+
+            // Deduplicate tools within the scenario
+            const seenTools = new Set();
+            const uniqueSteps = (detail.steps || []).filter(step => {
+                const toolName = step.command.split(' ')[0].toLowerCase();
+                if (seenTools.has(toolName)) return false;
+                seenTools.add(toolName);
+                return true;
+            });
+
+            const cards = uniqueSteps.map(step => {
                 const toolName = step.command.split(' ')[0].toLowerCase();
                 return getToolCard(toolName, step);
             }).join('');
-            html += `<div class="command-scenario-group">
-                <div class="command-scenario-header">
-                    <h3>${s.name}</h3>
-                    <span class="type-badge">${s.attack_type}</span>
+
+            const cmdsStr = (detail.steps || []).map(st => st.command).join(' ').toLowerCase();
+            html += `<div class="command-scenario-group" data-scenario="${escapeHtml(s.name.toLowerCase())}" data-commands="${escapeHtml(cmdsStr)}">
+                <div class="command-scenario-header cmd-collapsible" onclick="toggleCommandGroup(this)">
+                    <div class="cmd-header-left">
+                        <span class="cmd-collapse-arrow">&#9654;</span>
+                        <h3>${s.name}</h3>
+                    </div>
+                    <div class="cmd-header-right">
+                        <span class="type-badge">${s.attack_type}</span>
+                        <span class="diff-badge ${s.difficulty.toLowerCase()}">${s.difficulty}</span>
+                    </div>
                 </div>
-                <div class="cmd-cards-grid">${cards}</div>
+                <div class="cmd-cards-grid cmd-collapsed">${cards}</div>
             </div>`;
         }
         content.innerHTML = html;
     } catch (e) { console.error('Error loading commands:', e); }
+}
+
+function toggleCommandGroup(header) {
+    const grid = header.nextElementSibling;
+    const arrow = header.querySelector('.cmd-collapse-arrow');
+    grid.classList.toggle('cmd-collapsed');
+    arrow.classList.toggle('cmd-expanded');
+}
+
+function filterCommands(query) {
+    const q = query.toLowerCase().trim();
+    document.querySelectorAll('.command-scenario-group').forEach(group => {
+        const name = group.dataset.scenario || '';
+        const cmds = group.dataset.commands || '';
+        const match = !q || name.includes(q) || cmds.includes(q);
+        group.style.display = match ? '' : 'none';
+        // Auto-expand matching groups when searching
+        if (match && q) {
+            group.querySelector('.cmd-cards-grid').classList.remove('cmd-collapsed');
+            const arrow = group.querySelector('.cmd-collapse-arrow');
+            if (arrow) arrow.classList.add('cmd-expanded');
+        }
+    });
 }
 
 // ===== Dashboard =====
@@ -1276,4 +1556,96 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// ===== Encouragement System (SPECTRA Buddy) =====
+const encourageMessages = {
+    stepComplete: [
+        "Nice work, agent! One step closer to mastering this.",
+        "You're building real skills here. Keep going!",
+        "That was smooth! You've got a natural instinct for this.",
+        "Step complete! Your toolkit is growing stronger.",
+        "Well done! Every expert was once a beginner.",
+        "Brilliant execution! The cyber world needs analysts like you.",
+        "Another step conquered! You're on a roll.",
+        "Clean work! That's how the pros do it."
+    ],
+    scenarioComplete: [
+        "Mission accomplished! You should be proud of yourself.",
+        "Incredible work, agent! Take a moment to appreciate what you just learned.",
+        "Scenario complete! You're becoming a real cyber detective.",
+        "You did it! Remember, real security teams use these exact techniques.",
+        "Outstanding performance! Time to celebrate with a stretch break."
+    ],
+    keepTrying: [
+        "Stuck? That's totally okay. The best analysts ask for help -- try 'hint'!",
+        "Don't worry about getting it perfect. Learning is messy, and that's fine!",
+        "Every wrong attempt teaches you something. You're still making progress!",
+        "Take a breath. You've got this. Try checking the hint for guidance.",
+        "Even expert hackers Google things all the time. No shame in learning!"
+    ],
+    breakReminder: [
+        "You've been working hard! Take a 5-minute stretch break -- your brain will thank you.",
+        "Hey agent, hydration check! Grab some water and rest your eyes for a moment.",
+        "Time for a quick breather. Stand up, stretch, and come back refreshed!",
+        "Your brain processes better after short breaks. Take a walk, then come back stronger.",
+        "Pro tip: the best hackers take regular breaks. Step away for a few minutes!"
+    ]
+};
+
+let encourageFailCount = 0;
+let sessionStartTime = Date.now();
+let lastBreakReminder = Date.now();
+
+function showEncouragement(type) {
+    const messages = encourageMessages[type];
+    if (!messages) return;
+    const msg = messages[Math.floor(Math.random() * messages.length)];
+
+    // Create popup element
+    const popup = document.createElement('div');
+    popup.className = 'encourage-popup';
+    popup.innerHTML = `
+        <div class="encourage-content">
+            <div class="encourage-glow"></div>
+            <p>${msg}</p>
+            <button class="encourage-close" onclick="this.parentElement.parentElement.remove()">Got it</button>
+        </div>
+    `;
+    document.body.appendChild(popup);
+
+    // Auto-remove after 6 seconds
+    setTimeout(() => { if (popup.parentElement) popup.classList.add('encourage-fade-out'); }, 5000);
+    setTimeout(() => { if (popup.parentElement) popup.remove(); }, 5800);
+}
+
+// Check for break reminders (every 30 minutes)
+setInterval(() => {
+    const elapsed = Date.now() - lastBreakReminder;
+    if (elapsed > 30 * 60 * 1000) {
+        showEncouragement('breakReminder');
+        lastBreakReminder = Date.now();
+    }
+}, 60000);
+
+// Hook into step completion
+const _origHandleAttack = typeof handleAttackCommand === 'function' ? null : null;
+function onStepCompleted() {
+    encourageFailCount = 0;
+    // Show encouragement every 2-3 steps (not every single one)
+    if (Math.random() < 0.4) {
+        setTimeout(() => showEncouragement('stepComplete'), 800);
+    }
+}
+
+function onCommandFailed() {
+    encourageFailCount++;
+    if (encourageFailCount >= 3) {
+        showEncouragement('keepTrying');
+        encourageFailCount = 0;
+    }
+}
+
+function onScenarioCompleted() {
+    setTimeout(() => showEncouragement('scenarioComplete'), 1500);
 }

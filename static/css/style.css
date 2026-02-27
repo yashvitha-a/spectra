@@ -2882,3 +2882,382 @@ textarea:focus {
         grid-template-columns: 1fr 1fr;
     }
 }
+
+/* ===== Difficulty Headers & Badges ===== */
+.difficulty-header {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 700;
+    padding: 1rem 1.5rem;
+    margin: 2rem 0 1rem;
+    border-radius: var(--radius);
+    letter-spacing: 0.1em;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    grid-column: 1 / -1;
+}
+
+.difficulty-header.beginner {
+    color: #00ff41;
+    background: linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 255, 65, 0.02));
+    border-left: 4px solid #00ff41;
+}
+
+.difficulty-header.intermediate {
+    color: #ffd700;
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), rgba(255, 215, 0, 0.02));
+    border-left: 4px solid #ffd700;
+}
+
+.difficulty-header.advanced {
+    color: #ff3d5a;
+    background: linear-gradient(135deg, rgba(255, 61, 90, 0.08), rgba(255, 61, 90, 0.02));
+    border-left: 4px solid #ff3d5a;
+}
+
+.diff-icon {
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+.diff-badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 20px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+.diff-badge.beginner {
+    background: rgba(0, 255, 65, 0.15);
+    color: #00ff41;
+    border: 1px solid rgba(0, 255, 65, 0.3);
+}
+
+.diff-badge.intermediate {
+    background: rgba(255, 215, 0, 0.15);
+    color: #ffd700;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.diff-badge.advanced {
+    background: rgba(255, 61, 90, 0.15);
+    color: #ff3d5a;
+    border: 1px solid rgba(255, 61, 90, 0.3);
+}
+
+/* ===== Command Search Bar ===== */
+.cmd-search-bar {
+    margin-bottom: 1.5rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.cmd-search-bar input {
+    width: 100%;
+    padding: 0.9rem 1.2rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-primary);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.9rem;
+    outline: none;
+    transition: var(--transition);
+}
+
+.cmd-search-bar input:focus {
+    border-color: var(--cyan);
+    box-shadow: 0 0 20px rgba(0, 217, 255, 0.15);
+}
+
+.cmd-search-bar input::placeholder {
+    color: var(--text-dim);
+}
+
+/* ===== Collapsible Command Groups ===== */
+.command-scenario-group {
+    background: rgba(0, 217, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: var(--transition);
+}
+
+.command-scenario-group:hover {
+    border-color: rgba(0, 217, 255, 0.3);
+}
+
+.command-scenario-header {
+    padding: 1rem 1.2rem;
+    background: rgba(10, 14, 39, 0.8);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+    transition: var(--transition);
+}
+
+.command-scenario-header:hover {
+    background: rgba(0, 217, 255, 0.05);
+}
+
+.cmd-collapsible {
+    cursor: pointer;
+    user-select: none;
+    display: flex !important;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.cmd-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.cmd-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.cmd-collapse-arrow {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    transition: transform 0.3s ease;
+    display: inline-block;
+}
+
+.cmd-collapse-arrow.cmd-expanded {
+    transform: rotate(90deg);
+}
+
+.cmd-cards-grid.cmd-collapsed {
+    display: none !important;
+}
+
+/* ===== Encouragement Popup ===== */
+@keyframes encourageSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(100%) scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes encourageGlow {
+
+    0%,
+    100% {
+        box-shadow: 0 0 15px rgba(0, 255, 65, 0.2), 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 25px rgba(0, 255, 65, 0.35), 0 8px 32px rgba(0, 0, 0, 0.4);
+    }
+}
+
+.encourage-popup {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 10000;
+    animation: encourageSlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    max-width: 380px;
+}
+
+.encourage-popup.encourage-fade-out {
+    animation: encourageFadeOut 0.8s ease forwards;
+}
+
+@keyframes encourageFadeOut {
+    to {
+        opacity: 0;
+        transform: translateY(20px) scale(0.95);
+    }
+}
+
+.encourage-content {
+    position: relative;
+    background: linear-gradient(135deg, #0f1538, #141a3d);
+    border: 1px solid rgba(0, 255, 65, 0.3);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    overflow: hidden;
+    animation: encourageGlow 2s ease-in-out infinite;
+}
+
+.encourage-glow {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle at 30% 30%, rgba(0, 255, 65, 0.06), transparent 50%);
+    pointer-events: none;
+}
+
+.encourage-content p {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.encourage-close {
+    background: rgba(0, 255, 65, 0.15);
+    border: 1px solid rgba(0, 255, 65, 0.3);
+    color: var(--green);
+    padding: 0.4rem 1.2rem;
+    border-radius: 20px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: var(--transition);
+    position: relative;
+    z-index: 1;
+}
+
+/* ===== Command Feedback System ===== */
+.cmd-feedback {
+    background: rgba(0, 217, 255, 0.05);
+    border: 1px solid rgba(0, 217, 255, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 0.8rem 1rem;
+    margin: 0.5rem 0;
+    font-size: 0.85rem;
+    animation: fadeIn 0.3s ease;
+}
+
+.cmd-feedback code {
+    color: var(--cyan);
+    font-weight: 700;
+    background: rgba(0, 217, 255, 0.1);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+}
+
+.feedback-wrong {
+    color: var(--red);
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+}
+
+.feedback-right {
+    color: var(--green);
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+}
+
+.feedback-flags {
+    margin: 0.4rem 0;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.flag-correct {
+    color: #0a0e27;
+    background: var(--green);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.flag-missing {
+    color: #0a0e27;
+    background: var(--red);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    opacity: 0.7;
+}
+
+.feedback-hint {
+    color: var(--yellow);
+    margin-top: 0.3rem;
+    font-size: 0.82rem;
+}
+
+.feedback-tip {
+    color: var(--cyan);
+    margin-top: 0.4rem;
+    font-size: 0.82rem;
+    font-style: italic;
+}
+
+/* ===== Level Guide Panel ===== */
+.level-guide-panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    animation: fadeIn 0.5s ease;
+}
+
+.level-guide-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+}
+
+.level-guide-header h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.95rem;
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+}
+
+.level-guide-body {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.7;
+}
+
+.level-guide-body h4 {
+    color: var(--green);
+    margin: 0.8rem 0 0.4rem;
+    font-size: 0.9rem;
+}
+
+.level-guide-body ul {
+    padding-left: 1.2rem;
+    margin: 0.3rem 0;
+}
+
+.level-guide-body li {
+    margin-bottom: 0.3rem;
+}
+
+.level-guide-body code {
+    color: var(--cyan);
+    background: rgba(0, 217, 255, 0.1);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.82rem;
+}
+
+.encourage-close:hover {
+    background: rgba(0, 255, 65, 0.25);
+    transform: scale(1.05);
+}

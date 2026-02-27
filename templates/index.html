@@ -172,6 +172,7 @@
                     <div id="attack-steps" class="steps-list"></div>
                 </div>
                 <div class="main-panel">
+                    <div id="level-guide-panel" class="level-guide-panel" style="display:none;"></div>
                     <div id="company-intel-panel" class="company-intel-panel"></div>
                     <div class="step-detail" id="step-detail">
                         <h3 id="current-step-title">Select a step to begin</h3>
@@ -182,11 +183,18 @@
                         </div>
                     </div>
                     <div class="terminal-panel" id="terminal-panel">
-                        <div class="terminal-header">
-                            <span class="terminal-dot red"></span>
-                            <span class="terminal-dot yellow"></span>
-                            <span class="terminal-dot green"></span>
-                            <span class="terminal-title">spectra-terminal</span>
+                        <div class="terminal-header"
+                            style="justify-content: space-between; display: flex; align-items: center; width: 100%;">
+                            <div>
+                                <span class="terminal-dot red"></span>
+                                <span class="terminal-dot yellow"></span>
+                                <span class="terminal-dot green"></span>
+                                <span class="terminal-title">spectra-terminal</span>
+                            </div>
+                            <button class="btn-terminal-action" onclick="showScreen('commands-screen')"
+                                title="View all available commands"
+                                style="background: transparent; color: var(--cyan); border: 1px solid var(--cyan); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 4px;">📖
+                                Command List</button>
                         </div>
                         <div class="terminal-body" id="terminal-output">
                             <div class="terminal-line system">Welcome to SPECTRA Attack Terminal</div>
