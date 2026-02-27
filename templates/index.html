@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="SPECTRA - Cyber Forensics Training Simulator. Learn attack and defense techniques through interactive scenarios.">
+    <title>SPECTRA - Cyber Forensics Training Simulator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <!-- USERNAME MODAL -->
+    <div id="username-modal" class="modal-overlay">
+        <div class="username-modal">
+            <div class="modal-glow"></div>
+            <h2 class="glitch-text" data-text="SPECTRA" style="font-size:2rem;margin-bottom:0.5rem;">SPECTRA</h2>
+            <p class="subtitle" style="font-size:0.8rem;margin-bottom:1.5rem;">IDENTIFY YOURSELF</p>
+            <input type="text" id="username-input" class="terminal-input modal-input"
+                placeholder="Enter your callsign..." autocomplete="off" spellcheck="false" maxlength="20">
+            <button class="btn btn-execute" onclick="submitUsername()" id="btn-submit-username">Initialize</button>
+        </div>
+    </div>
+
+    <!-- TUTORIAL OVERLAY -->
+    <div id="tutorial-overlay" class="tutorial-overlay" style="display:none;">
+        <div class="tutorial-backdrop"></div>
+        <div class="tutorial-card" id="tutorial-card">
+            <div class="tutorial-step-indicator" id="tutorial-step-indicator"></div>
+            <h3 id="tutorial-title"></h3>
+            <p id="tutorial-text"></p>
+            <div class="tutorial-actions">
+                <button class="btn btn-back" onclick="tutorialPrev()">← Back</button>
+                <button class="btn btn-execute" onclick="tutorialNext()" id="btn-tutorial-next">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACHIEVEMENT POPUP -->
+    <div id="achievement-popup" class="achievement-popup" style="display:none;">
+        <span class="ach-icon" id="ach-popup-icon"></span>
+        <div class="ach-popup-info">
+            <span class="ach-popup-label">Achievement Unlocked!</span>
+            <span class="ach-popup-name" id="ach-popup-name"></span>
+        </div>
+    </div>
+
+    <!-- THEME TOGGLE -->
+    <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Toggle theme">🌙</button>
+
+    <!-- SETTINGS PANEL -->
+    <button class="settings-btn" id="settings-btn" onclick="toggleSettings()" title="Settings & Features">⚙️</button>
+    <div class="settings-panel" id="settings-panel" style="display:none;">
+        <div class="settings-header">
+            <h3>⚙️ Features</h3>
+            <button class="file-modal-close" onclick="toggleSettings()">×</button>
+        </div>
+        <div class="settings-links">
+            <div class="settings-link" onclick="showDashboard()">
+                <span class="sl-icon">📊</span><span>Dashboard</span><span class="sl-desc">XP, Level & Progress</span>
+            </div>
+            <div class="settings-link" onclick="showLuca()">
+                <span class="sl-icon">🧠</span><span>Luca</span><span class="sl-desc">Knowledge Base</span>
+            </div>
+            <div class="settings-link" onclick="showTeamScoreboard()">
+                <span class="sl-icon">🏆</span><span>Team Scoreboard</span><span class="sl-desc">Compete & Rank</span>
+            </div>
+            <div class="settings-link" onclick="showRvB()">
+                <span class="sl-icon">⚔️</span><span>Red vs Blue</span><span class="sl-desc">Attack vs Defend</span>
+            </div>
+            <div class="settings-link" onclick="startTutorial()">
+                <span class="sl-icon">❓</span><span>Tutorial</span><span class="sl-desc">Guided Walkthrough</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- HOME SCREEN -->
+    <div id="home-screen" class="screen active">
+        <div class="container">
+            <div class="hero">
+                <div class="logo-glow"></div>
+                <h1 class="glitch-text" data-text="SPECTRA">SPECTRA</h1>
+                <p class="subtitle">Cyber Forensics Training Simulator</p>
+                <p class="tagline">Experience both sides of a cyber attack — learn how attacks leave forensic evidence
+                </p>
+                <div class="user-info-bar" id="user-info-bar" style="display:none;">
+                    <span class="user-level-badge" id="home-level-badge">LVL 1</span>
+                    <span class="user-name" id="home-username"></span>
+                    <div class="user-xp-mini">
+                        <div class="xp-bar-mini">
+                            <div class="xp-fill-mini" id="home-xp-fill" style="width:0%"></div>
+                        </div>
+                        <span class="xp-text-mini" id="home-xp-text">0 XP</span>
+                    </div>
+                </div>
+            </div>
+            <div class="mode-selection three-col">
+                <div class="mode-card attack-card" onclick="selectMode('attack')">
+                    <div class="mode-icon">🔴</div>
+                    <h2>Attack Mode</h2>
+                    <p class="mode-label">RED TEAM</p>
+                    <p>Execute a simulated cyber attack step-by-step using terminal commands.</p>
+                    <button class="btn btn-attack" id="btn-attack-mode">Launch Attack Mode</button>
+                </div>
+                <div class="mode-card detect-card" onclick="selectMode('detect')">
+                    <div class="mode-icon">🔵</div>
+                    <h2>Detect Mode</h2>
+                    <p class="mode-label">BLUE TEAM</p>
+                    <p>Analyze forensic logs, reconstruct the timeline, and identify evidence.</p>
+                    <button class="btn btn-detect" id="btn-detect-mode">Launch Detect Mode</button>
+                </div>
+                <div class="mode-card commands-card" onclick="showCommandList()">
+                    <div class="mode-icon">📋</div>
+                    <h2>Command List</h2>
+                    <p class="mode-label">REFERENCE</p>
+                    <p>View all available commands with explanations for each scenario.</p>
+                    <button class="btn btn-commands" id="btn-commands">View Commands</button>
+                </div>
+            </div>
+            <div class="footer-info">
+                <p>Team Spectra • Maharaja Institute of Technology Mysore</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- COMMAND LIST SCREEN -->
+    <div id="commands-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('home-screen')">← Back</button>
+                <h2>📋 Command Reference</h2>
+            </nav>
+            <div id="commands-content" class="commands-content"></div>
+        </div>
+    </div>
+
+    <!-- SCENARIO SELECTION SCREEN -->
+    <div id="scenario-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('home-screen')">← Back</button>
+                <h2 id="scenario-mode-title">Select Scenario</h2>
+            </nav>
+            <div id="scenarios-list" class="scenarios-grid"></div>
+        </div>
+    </div>
+
+    <!-- ATTACK MODE SCREEN -->
+    <div id="attack-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('scenario-screen')">← Back</button>
+                <div class="mode-header-container" style="display: flex; flex-direction: column; align-items: center;">
+                    <h2>🔴 Attack Mode</h2>
+                    <h3 id="attack-scenario-title" style="color: var(--cyan); margin-top: 5px; font-weight: normal; font-size: 1.2rem;"></h3>
+                </div>
+                <span class="mode-badge attack-badge">RED TEAM</span>
+            </nav>
+            <!-- Attack Chain Visualization -->
+            <div class="attack-chain-panel" id="attack-chain-panel"></div>
+            <!-- Network Diagram -->
+            <div class="network-diagram-panel" id="network-diagram-panel">
+                <div class="nd-header" onclick="toggleNetworkDiagram()">
+                    <span>🌐 Network Topology</span>
+                    <span class="intel-toggle" id="nd-toggle">▶</span>
+                </div>
+                <div class="nd-body" id="nd-body" style="display:none;">
+                    <svg id="network-svg" width="100%" height="300" viewBox="0 0 700 400"></svg>
+                </div>
+            </div>
+            <div class="attack-layout">
+                <div class="steps-panel">
+                    <h3>Attack Steps</h3>
+                    <div id="attack-steps" class="steps-list"></div>
+                </div>
+                <div class="main-panel">
+                    <div id="level-guide-panel" class="level-guide-panel" style="display:none;"></div>
+                    <div id="company-intel-panel" class="company-intel-panel"></div>
+                    <div class="step-detail" id="step-detail">
+                        <h3 id="current-step-title">Select a step to begin</h3>
+                        <p id="current-step-description"></p>
+                        <div id="hint-box" class="hint-box" style="display:none;">
+                            <span class="hint-label">💡 Hint:</span>
+                            <span id="hint-text"></span>
+                        </div>
+                    </div>
+                    <div class="terminal-panel" id="terminal-panel">
+                        <div class="terminal-header"
+                            style="justify-content: space-between; display: flex; align-items: center; width: 100%;">
+                            <div>
+                                <span class="terminal-dot red"></span>
+                                <span class="terminal-dot yellow"></span>
+                                <span class="terminal-dot green"></span>
+                                <span class="terminal-title">spectra-terminal</span>
+                            </div>
+                            <button class="btn-terminal-action" onclick="showScreen('commands-screen')"
+                                title="View all available commands"
+                                style="background: transparent; color: var(--cyan); border: 1px solid var(--cyan); border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 4px;">📖
+                                Command List</button>
+                        </div>
+                        <div class="terminal-body" id="terminal-output">
+                            <div class="terminal-line system">Welcome to SPECTRA Attack Terminal</div>
+                            <div class="terminal-line system">Type commands to execute each attack step.</div>
+                            <div class="terminal-line system">Type <span class="cmd-highlight">help</span> for hints.
+                            </div>
+                        </div>
+                        <div class="terminal-input-row">
+                            <span class="terminal-prompt">spectra@attack:~$</span>
+                            <input type="text" id="attack-cmd-input" class="terminal-input"
+                                placeholder="Type your command..." autocomplete="off" spellcheck="false">
+                            <button class="btn-hint" onclick="requestHint('attack')" title="Get a hint">💡 Hint</button>
+                        </div>
+                    </div>
+                    <div class="logs-panel">
+                        <h3>📋 Generated Logs</h3>
+                        <div id="attack-logs" class="logs-container">
+                            <p class="placeholder-text">Execute steps to generate forensic logs...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="attack-footer">
+                <button class="btn btn-detect" id="btn-switch-detect" onclick="switchToDetect()" style="display:none;">
+                    🔍 Switch to Detect Mode
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DETECT MODE SCREEN -->
+    <div id="detect-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('scenario-screen')">← Back</button>
+                <div class="mode-header-container" style="display: flex; flex-direction: column; align-items: center;">
+                    <h2>🔵 Detect Mode</h2>
+                    <h3 id="detect-scenario-title" style="color: var(--cyan); margin-top: 5px; font-weight: normal; font-size: 1.2rem;"></h3>
+                </div>
+                <span class="mode-badge detect-badge">BLUE TEAM</span>
+            </nav>
+            <div class="detect-layout">
+                <div class="logs-analysis-panel">
+                    <h3>📋 Forensic Logs <span class="noise-badge" title="Contains benign noise logs">🔀 Noise
+                            Active</span></h3>
+                    <div id="detect-logs" class="logs-container">
+                        <p class="placeholder-text">Loading forensic logs...</p>
+                    </div>
+                </div>
+                <div class="investigation-panel">
+                    <h3>🔍 Investigation</h3>
+                    <div class="terminal-panel detect-terminal" id="detect-terminal-panel">
+                        <div class="terminal-header">
+                            <span class="terminal-dot red"></span>
+                            <span class="terminal-dot yellow"></span>
+                            <span class="terminal-dot green"></span>
+                            <span class="terminal-title">spectra-forensics</span>
+                        </div>
+                        <div class="terminal-body" id="detect-terminal-output">
+                            <div class="terminal-line system">Welcome to SPECTRA Forensics Terminal</div>
+                            <div class="terminal-line system">Commands: <span class="cmd-highlight">grep
+                                    &lt;term&gt;</span> | <span class="cmd-highlight">timeline</span> | <span
+                                    class="cmd-highlight">analyze</span> | <span class="cmd-highlight">help</span></div>
+                        </div>
+                        <div class="terminal-input-row">
+                            <span class="terminal-prompt">spectra@forensics:~$</span>
+                            <input type="text" id="detect-cmd-input" class="terminal-input"
+                                placeholder="Type forensics command..." autocomplete="off" spellcheck="false">
+                            <button class="btn-hint" onclick="requestHint('detect')" title="Get a hint">💡 Hint</button>
+                        </div>
+                    </div>
+                    <div class="timeline-section">
+                        <h4>Evidence Timeline</h4>
+                        <div id="evidence-timeline" class="timeline"></div>
+                    </div>
+                    <div class="findings-section">
+                        <h4>Findings Checklist</h4>
+                        <div id="findings-checklist" class="checklist">
+                            <label class="check-item"><input type="checkbox" value="phishing_email"><span>Phishing email
+                                    with spoofed sender</span></label>
+                            <label class="check-item"><input type="checkbox" value="fake_domain"><span>Fake login domain
+                                    identified</span></label>
+                            <label class="check-item"><input type="checkbox" value="credential_theft"><span>Credential
+                                    theft detected</span></label>
+                            <label class="check-item"><input type="checkbox" value="lateral_movement"><span>Unauthorized
+                                    access / lateral movement</span></label>
+                        </div>
+                    </div>
+                    <div class="analysis-section">
+                        <h4>Your Analysis</h4>
+                        <textarea id="analysis-text" placeholder="Describe your findings..."></textarea>
+                        <button class="btn btn-submit" id="btn-submit-analysis" onclick="submitAnalysis()">📊 Submit
+                            Analysis</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESULTS SCREEN -->
+    <div id="results-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('home-screen')">← Home</button>
+                <h2>📊 Results</h2>
+            </nav>
+            <div class="results-content">
+                <div class="score-display">
+                    <div class="score-circle" id="score-circle">
+                        <span class="score-value" id="score-value">0</span>
+                        <span class="score-label">/ 100</span>
+                    </div>
+                    <p id="score-message" class="score-message">Calculating...</p>
+                </div>
+                <div class="xp-award-display" id="xp-award-display" style="display:none;">
+                    <span class="xp-award-text" id="xp-award-text"></span>
+                </div>
+                <div class="findings-results" id="findings-results"></div>
+                <div class="case-study-section" id="case-study-section" style="display:none;"></div>
+                <div class="results-actions">
+                    <button class="btn btn-attack" onclick="showScreen('home-screen')">🏠 Return Home</button>
+                    <button class="btn btn-detect" onclick="retryDetect()">🔄 Try Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DASHBOARD SCREEN -->
+    <div id="dashboard-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('home-screen')">← Back</button>
+                <h2>📊 Dashboard</h2>
+            </nav>
+            <div class="dashboard-content" id="dashboard-content">
+                <div class="dash-header">
+                    <div class="dash-user">
+                        <span class="dash-level-badge" id="dash-level-badge">LVL 1</span>
+                        <h3 id="dash-username">Agent</h3>
+                        <span class="dash-level-name" id="dash-level-name">Recruit</span>
+                    </div>
+                    <div class="dash-xp">
+                        <div class="xp-bar">
+                            <div class="xp-fill" id="dash-xp-fill" style="width:0%"></div>
+                        </div>
+                        <span class="xp-label" id="dash-xp-label">0 / 500 XP</span>
+                    </div>
+                </div>
+                <div class="dash-stats">
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-scenarios">0</div>
+                        <div class="stat-label">Scenarios</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-xp-total">0</div>
+                        <div class="stat-label">Total XP</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-achievements">0</div>
+                        <div class="stat-label">Achievements</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="dash-level">1</div>
+                        <div class="stat-label">Level</div>
+                    </div>
+                </div>
+                <h3 class="section-title">🏅 Achievements</h3>
+                <div class="achievements-grid" id="achievements-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LUCA KNOWLEDGE BASE SCREEN -->
+    <div id="luca-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('home-screen')">← Back</button>
+                <h2>🧠 Luca — Knowledge Base</h2>
+            </nav>
+            <div class="luca-search">
+                <input type="text" id="luca-search-input" class="terminal-input luca-input"
+                    placeholder="Search terms..." oninput="searchLuca()">
+            </div>
+            <div class="luca-categories" id="luca-categories"></div>
+            <div class="luca-entries" id="luca-entries"></div>
+        </div>
+    </div>
+
+    <!-- TEAM SCOREBOARD SCREEN -->
+    <div id="team-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('home-screen')">← Back</button>
+                <h2>🏆 Team Scoreboard</h2>
+            </nav>
+            <div class="team-actions">
+                <input type="text" id="team-name-input" class="terminal-input modal-input" placeholder="Team name...">
+                <button class="btn btn-execute" onclick="createTeam()">Create Team</button>
+                <button class="btn btn-detect" onclick="joinTeam()">Join Team</button>
+            </div>
+            <div class="team-list" id="team-list"></div>
+        </div>
+    </div>
+
+    <!-- RED VS BLUE SCREEN -->
+    <div id="rvb-screen" class="screen">
+        <div class="container">
+            <nav class="top-nav">
+                <button class="btn btn-back" onclick="showScreen('home-screen')">← Back</button>
+                <h2>⚔️ Red vs Blue</h2>
+            </nav>
+            <div class="rvb-info">
+                <div class="rvb-card rvb-red">
+                    <div class="mode-icon">🔴</div>
+                    <h3>Red Team</h3>
+                    <p>Execute the attack scenario. Your actions generate logs for the Blue Team to analyze.</p>
+                    <button class="btn btn-attack" onclick="startRvBAttack()">Play as Attacker</button>
+                </div>
+                <div class="rvb-vs">VS</div>
+                <div class="rvb-card rvb-blue">
+                    <div class="mode-icon">🔵</div>
+                    <h3>Blue Team</h3>
+                    <p>Analyze logs generated by the Red Team. Find all evidence and submit your analysis.</p>
+                    <button class="btn btn-detect" onclick="startRvBDefend()">Play as Defender</button>
+                </div>
+            </div>
+            <div class="rvb-scoreboard" id="rvb-scoreboard" style="display:none;">
+                <h3>⚔️ Session Results</h3>
+                <div id="rvb-results"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FILE VIEWER MODAL -->
+    <div id="file-viewer-modal" class="file-modal-overlay" onclick="closeFileViewer(event)">
+        <div class="file-modal">
+            <div class="file-modal-header">
+                <span class="file-modal-icon">📄</span>
+                <span class="file-modal-filename" id="file-modal-filename"></span>
+                <span class="file-modal-path" id="file-modal-path"></span>
+                <button class="file-modal-close" onclick="closeFileViewer()">×</button>
+            </div>
+            <pre class="file-modal-content" id="file-modal-content"></pre>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+
+</html>
