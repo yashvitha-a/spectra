@@ -8,18 +8,38 @@
         content="SPECTRA - Cyber Forensics Training Simulator. Learn attack and defense techniques through interactive scenarios.">
     <title>SPECTRA - Cyber Forensics Training Simulator</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = "{{ supabase_url }}";
+        const SUPABASE_KEY = "{{ supabase_key }}";
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    </script>
 </head>
 
 <body>
     <!-- USERNAME MODAL -->
-    <div id="username-modal" class="modal-overlay">
+    <div id="username-modal" class="modal-overlay hidden">
         <div class="username-modal">
             <div class="modal-glow"></div>
             <h2 class="glitch-text" data-text="SPECTRA" style="font-size:2rem;margin-bottom:0.5rem;">SPECTRA</h2>
-            <p class="subtitle" style="font-size:0.8rem;margin-bottom:1.5rem;">IDENTIFY YOURSELF</p>
-            <input type="text" id="username-input" class="terminal-input modal-input"
-                placeholder="Enter your callsign..." autocomplete="off" spellcheck="false" maxlength="20">
-            <button class="btn btn-execute" onclick="submitUsername()" id="btn-submit-username">Initialize</button>
+            <p class="subtitle" id="auth-subtitle" style="font-size:0.8rem;margin-bottom:1.5rem;">IDENTIFY YOURSELF</p>
+            
+            <div class="auth-tabs" style="display:flex; justify-content:center; gap:10px; margin-bottom:15px;">
+                <button class="btn" id="tab-login" onclick="switchAuthTab('login')" style="border-color:var(--cyan); color:var(--cyan);">LOGIN</button>
+                <button class="btn" id="tab-register" onclick="switchAuthTab('register')" style="border-color:transparent; color:var(--text-dim);">REGISTER</button>
+            </div>
+
+            <input type="email" id="auth-email" class="terminal-input modal-input"
+                placeholder="Enter email..." autocomplete="off" spellcheck="false" style="margin-bottom: 10px;">
+            <input type="password" id="auth-password" class="terminal-input modal-input"
+                placeholder="Enter password..." autocomplete="off" style="margin-bottom: 10px;">
+            <input type="text" id="auth-username" class="terminal-input modal-input"
+                placeholder="Enter callsign (username)..." autocomplete="off" style="display:none; margin-bottom: 15px;">
+
+            <button class="btn btn-execute" onclick="submitAuth()" id="btn-submit-auth">ACCESS SYSTEM</button>
+            <p id="auth-error-msg" style="color:var(--red); font-size:0.8rem; margin-top:10px; display:none;"></p>
         </div>
     </div>
 
@@ -72,6 +92,9 @@
             <div class="settings-link" onclick="startTutorial()">
                 <span class="sl-icon">❓</span><span>Tutorial</span><span class="sl-desc">Guided Walkthrough</span>
             </div>
+            <div class="settings-link" onclick="logout()" style="color:var(--red);">
+                <span class="sl-icon">🚪</span><span>Logout</span><span class="sl-desc">Sign out</span>
+            </div>
         </div>
     </div>
 
@@ -103,12 +126,12 @@
                     <p>Execute a simulated cyber attack step-by-step using terminal commands.</p>
                     <button class="btn btn-attack" id="btn-attack-mode">Launch Attack Mode</button>
                 </div>
-                <div class="mode-card detect-card" onclick="selectMode('detect')">
+                <div class="mode-card detect-card">
                     <div class="mode-icon">🔵</div>
                     <h2>Detect Mode</h2>
-                    <p class="mode-label">BLUE TEAM</p>
+                    <p class="mode-label">BLUE TEAM (Unlocks after Attack Phase)</p>
                     <p>Analyze forensic logs, reconstruct the timeline, and identify evidence.</p>
-                    <button class="btn btn-detect" id="btn-detect-mode">Launch Detect Mode</button>
+                    <button class="btn btn-detect" id="btn-detect-mode" style="display:none;">Launch Detect Mode</button>
                 </div>
                 <div class="mode-card commands-card" onclick="showCommandList()">
                     <div class="mode-icon">📋</div>
@@ -276,14 +299,7 @@
                     <div class="findings-section">
                         <h4>Findings Checklist</h4>
                         <div id="findings-checklist" class="checklist">
-                            <label class="check-item"><input type="checkbox" value="phishing_email"><span>Phishing email
-                                    with spoofed sender</span></label>
-                            <label class="check-item"><input type="checkbox" value="fake_domain"><span>Fake login domain
-                                    identified</span></label>
-                            <label class="check-item"><input type="checkbox" value="credential_theft"><span>Credential
-                                    theft detected</span></label>
-                            <label class="check-item"><input type="checkbox" value="lateral_movement"><span>Unauthorized
-                                    access / lateral movement</span></label>
+                            <!-- Populated dynamically by JS -->
                         </div>
                     </div>
                     <div class="analysis-section">
@@ -336,7 +352,7 @@
                 <div class="dash-header">
                     <div class="dash-user">
                         <span class="dash-level-badge" id="dash-level-badge">LVL 1</span>
-                        <h3 id="dash-username">Agent</h3>
+                        <h3 id="dash-username" ondblclick="promptRenameUser()" title="Double-click to rename" style="cursor: pointer;">Agent</h3>
                         <span class="dash-level-name" id="dash-level-name">Recruit</span>
                     </div>
                     <div class="dash-xp">
@@ -363,6 +379,10 @@
                         <div class="stat-value" id="dash-level">1</div>
                         <div class="stat-label">Level</div>
                     </div>
+                </div>
+                <h3 class="section-title">✅ Completed Attack Rooms</h3>
+                <div class="scenarios-grid" id="dash-completed-rooms" style="margin-bottom: 30px;">
+                    <p style="color: var(--text-dim); text-align: center; width: 100%; grid-column: 1 / -1;">No rooms completed yet. Execute attacks to earn XP!</p>
                 </div>
                 <h3 class="section-title">🏅 Achievements</h3>
                 <div class="achievements-grid" id="achievements-grid"></div>

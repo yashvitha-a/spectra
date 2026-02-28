@@ -60,44 +60,121 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.key === 'Enter') handleDetectCommand(e.target.value.trim());
     });
     document.getElementById('username-input')?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') submitUsername();
+        if (e.key === 'Enter') submitAuth();
     });
 });
 
 // ===== User System =====
+async function apiFetch(url, options = {}) {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const token = session ? session.access_token : null;
+    if (token) {
+        options.headers = { ...options.headers, 'Authorization': `Bearer ${token}` };
+    }
+    return fetch(url, options); // Still use native fetch internally
+}
+
 function initUser() {
-    const saved = localStorage.getItem('spectra_user');
-    if (saved) {
-        currentUser = JSON.parse(saved);
-        document.getElementById('username-modal')?.classList.add('hidden');
-        updateHomeUserInfo();
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        if (session) {
+            try {
+                const res = await apiFetch('/api/user/profile', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: session.user.user_metadata?.username || session.user.email.split('@')[0] })
+                });
+                if (res.ok) {
+                    currentUser = await res.json();
+                    localStorage.setItem('spectra_user', JSON.stringify(currentUser));
+                    document.getElementById('username-modal')?.classList.add('hidden');
+                    updateHomeUserInfo();
+                    
+                    if (event === 'SIGNED_IN' && currentUser.xp === 0 && (!currentUser.completed_scenarios || currentUser.completed_scenarios === '[]')) {
+                        startTutorial();
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        } else {
+            currentUser = null;
+            localStorage.removeItem('spectra_user');
+            document.getElementById('username-modal')?.classList.remove('hidden');
+        }
+    });
+
+    supabaseClient.auth.getSession().then(({ data: { session } }) => {
+        if (!session) {
+            document.getElementById('username-modal')?.classList.remove('hidden');
+        } else {
+            document.getElementById('username-modal')?.classList.add('hidden');
+        }
+    });
+}
+
+function switchAuthTab(tab) {
+    document.getElementById('auth-error-msg').style.display = 'none';
+    const isLogin = tab === 'login';
+    document.getElementById('tab-login').style.borderColor = isLogin ? 'var(--cyan)' : 'transparent';
+    document.getElementById('tab-login').style.color = isLogin ? 'var(--cyan)' : 'var(--text-dim)';
+    document.getElementById('tab-register').style.borderColor = !isLogin ? 'var(--cyan)' : 'transparent';
+    document.getElementById('tab-register').style.color = !isLogin ? 'var(--cyan)' : 'var(--text-dim)';
+    document.getElementById('auth-username').style.display = isLogin ? 'none' : 'block';
+    document.getElementById('btn-submit-auth').innerText = isLogin ? 'ACCESS SYSTEM' : 'REGISTER SYSTEM';
+    document.getElementById('btn-submit-auth').dataset.tab = tab;
+}
+
+async function submitAuth() {
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    const err = document.getElementById('auth-error-msg');
+    const tab = document.getElementById('btn-submit-auth').dataset.tab || 'login';
+
+    if (!email || !password) {
+        err.innerText = "Email and password required.";
+        err.style.display = 'block';
+        return;
+    }
+
+    err.style.display = 'none';
+    const btn = document.getElementById('btn-submit-auth');
+    btn.innerText = "PROCESSING...";
+    btn.disabled = true;
+
+    try {
+        if (tab === 'register') {
+            const username = document.getElementById('auth-username').value.trim();
+            if (!username) throw new Error("Callsign missing.");
+            
+            const { data, error } = await supabaseClient.auth.signUp({ 
+                email, password, options: { data: { username } }
+            });
+            if (error) throw error;
+            if (data.user && data.user.identities && data.user.identities.length === 0) {
+                throw new Error("User already exists");
+            }
+        } else {
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+        }
+    } catch (e) {
+        err.innerText = e.message || "Authentication failed.";
+        err.style.display = 'block';
+        btn.innerText = tab === 'login' ? 'ACCESS SYSTEM' : 'REGISTER SYSTEM';
+        btn.disabled = false;
     }
 }
 
-async function submitUsername() {
-    const input = document.getElementById('username-input');
-    const username = input.value.trim();
-    if (!username) return;
-    try {
-        const res = await fetch('/api/user/profile', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username })
-        });
-        currentUser = await res.json();
-        localStorage.setItem('spectra_user', JSON.stringify(currentUser));
-        document.getElementById('username-modal')?.classList.add('hidden');
-        updateHomeUserInfo();
-    } catch (e) {
-        currentUser = { username, xp: 0, level: 1, completed_scenarios: '[]' };
-        localStorage.setItem('spectra_user', JSON.stringify(currentUser));
-        document.getElementById('username-modal')?.classList.add('hidden');
-        updateHomeUserInfo();
-    }
+async function logout() {
+    await supabaseClient.auth.signOut();
+    document.getElementById('settings-panel').style.display = 'none';
 }
 
 function updateHomeUserInfo() {
-    if (!currentUser) return;
     const bar = document.getElementById('user-info-bar');
+    if (!currentUser) {
+        if (bar) bar.style.display = 'none';
+        return;
+    }
     if (bar) bar.style.display = 'flex';
     const badge = document.getElementById('home-level-badge');
     if (badge) badge.textContent = `LVL ${currentUser.level || 1}`;
@@ -153,7 +230,7 @@ function selectMode(mode) {
 // ===== Scenarios =====
 async function loadScenarios() {
     try {
-        const res = await fetch('/api/scenarios');
+        const res = await apiFetch('/api/scenarios');
         const scenarios = await res.json();
         const grid = document.getElementById('scenarios-list');
         
@@ -190,7 +267,16 @@ async function loadScenarios() {
                     return url ? `<a href="${url}" target="_blank" class="thm-link">${name}</a>` : '';
                 }).join('');
                 
-                html += `<div class="scenario-card" onclick="selectScenario(${s.id})">
+                let isCompleted = false;
+                try {
+                    if (currentUser && currentUser.completed_scenarios) {
+                        const comp = JSON.parse(currentUser.completed_scenarios);
+                        if (comp.includes(s.id)) isCompleted = true;
+                    }
+                } catch(e) {}
+                
+                html += `<div class="scenario-card" onclick="selectScenario(${s.id})" style="position: relative;">
+                    ${isCompleted ? '<div style="position: absolute; top: 10px; right: 10px; background: rgba(74, 222, 128, 0.1); color: var(--green); border: 1px solid var(--green); padding: 3px 8px; border-radius: 4px; font-size: 0.75rem;">✅ Completed</div>' : ''}
                     <h3>${s.name}</h3>
                     <p>${s.description}</p>
                     <div class="scenario-meta">
@@ -235,8 +321,8 @@ window.addEventListener('resize', () => {
 async function selectScenario(id) {
     try {
         const [scenarioRes, filesRes] = await Promise.all([
-            fetch(`/api/scenario/${id}`),
-            fetch(`/api/company-files/${id}`)
+            apiFetch(`/api/scenario/${id}`),
+            apiFetch(`/api/company-files/${id}`)
         ]);
         currentScenario = await scenarioRes.json();
         const filesData = await filesRes.json();
@@ -448,7 +534,7 @@ function toggleNetworkDiagram() {
 async function loadNetworkDiagram() {
     if (!currentScenario) return;
     try {
-        const res = await fetch(`/api/network-map/${currentScenario.id}`);
+        const res = await apiFetch(`/api/network-map/${currentScenario.id}`);
         const map = await res.json();
         const svg = document.getElementById('network-svg');
         if (!svg) return;
@@ -551,7 +637,7 @@ async function loadNetworkDiagram() {
 // ===== File Viewer =====
 async function openFileViewer(fileId) {
     try {
-        const res = await fetch(`/api/company-file/${fileId}`);
+        const res = await apiFetch(`/api/company-file/${fileId}`);
         const file = await res.json();
         document.getElementById('file-modal-filename').textContent = file.filename;
         document.getElementById('file-modal-path').textContent = file.filepath;
@@ -663,7 +749,7 @@ async function handleAttackCommand(cmd) {
             revealedSteps++;
             output.innerHTML += `<div class="error-reaction all-done">
                 <span class="error-mascot">📖</span>
-                <span class="mascot-text">The command for Step ${currentStep + 1} is:<br><code style="color:var(--green);font-size:1rem;font-weight:700;">${escapeHtml(currentAllowed.cmd)}</code><br><span style="font-size:0.7rem;color:var(--text-dim);">Type it in to continue. (−50 XP penalty for revealing)</span></span>
+                <span class="mascot-text">The command for Step ${currentStep + 1} is:<br><code style="color:var(--green);font-size:1rem;font-weight:700;">${escapeHtml(currentAllowed.cmd)}</code><br><span style="font-size:0.7rem;color:var(--text-dim);">Type it in to continue.</span></span>
             </div>`;
             output.scrollTop = output.scrollHeight;
             return;
@@ -717,7 +803,7 @@ async function handleAttackCommand(cmd) {
 
     // Generate log via API
     try {
-        await fetch('/api/execute-step', {
+        await apiFetch('/api/execute-step', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ scenario_id: currentScenario.id, step_id: step.id, session_id: sessionId })
         });
@@ -750,7 +836,7 @@ async function handleAttackCommand(cmd) {
 
 async function loadAttackLogs() {
     try {
-        const res = await fetch(`/api/session-logs/${sessionId}`);
+        const res = await apiFetch(`/api/session-logs/${sessionId}`);
         const data = await res.json();
         const container = document.getElementById('attack-logs');
         container.innerHTML = data.map(log => `
@@ -764,14 +850,14 @@ async function loadAttackLogs() {
 }
 
 // ===== XP & Achievements =====
-async function awardXP(scenarioId, showBanner = false) {
+async function awardXP(scenarioId, customXp = null, showBanner = false) {
     if (!currentUser) return;
     const difficulty = currentScenario?.difficulty || 'Beginner';
     const xpMap = { 'Beginner': 100, 'Intermediate': 200, 'Advanced': 300 };
-    const xp = xpMap[difficulty] || 100;
+    const xp = customXp !== null ? customXp : (xpMap[difficulty] || 100);
 
     try {
-        const res = await fetch('/api/user/xp', {
+        const res = await apiFetch('/api/user/xp', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: currentUser.username, xp, scenario_id: scenarioId })
         });
@@ -832,7 +918,7 @@ async function checkAchievements(scenarioId, xpData) {
 async function unlockAchievement(key) {
     if (!currentUser) return;
     try {
-        const res = await fetch('/api/achievements/unlock', {
+        const res = await apiFetch('/api/achievements/unlock', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username: currentUser.username, achievement_key: key })
         });
@@ -867,17 +953,61 @@ function showAchievementPopup(icon, name) {
 }
 
 // ===== Detect Mode =====
+const possibleFindings = {
+    'phishing_email_detected': 'Phishing email with spoofed sender',
+    'fake_domain_identified': 'Fake login domain identified',
+    'credential_theft_found': 'Credential theft detected',
+    'unauthorized_access_found': 'Unauthorized access / lateral movement',
+    'sql_injection_detected': 'SQL Injection payload observed',
+    'malware_activity_found': 'Malware activity / Meterpreter session',
+    'insider_threat_detected': 'Suspicious insider behaviour',
+    'data_exfiltration_found': 'Data exfiltration detected',
+    'ddos_syn_flood': 'SYN flood attack detected',
+    'ddos_amplification': 'DNS Amplification detected',
+    'mitm_arp_spoof': 'ARP Spoofing detected',
+    'mitm_session_hijack': 'Session hijacking observed',
+    'dns_zone_transfer': 'Unauthorized Zone Transfer',
+    'dns_cache_poison': 'DNS Cache poisoned',
+    'supply_chain_compromise': 'Compromised npm package identified',
+    'supply_chain_backdoor': 'Malicious backdoor in dependency',
+    'xss_reflected': 'Reflected XSS payload observed',
+    'xss_stored': 'Stored XSS payload in comments',
+    'xss_cookie_theft': 'Session cookie exfiltration'
+};
+
+const scenarioFindingsMap = {
+    1: ['phishing_email_detected', 'fake_domain_identified', 'credential_theft_found', 'unauthorized_access_found'],
+    2: ['sql_injection_detected', 'credential_theft_found', 'unauthorized_access_found', 'data_exfiltration_found'],
+    3: ['malware_activity_found', 'unauthorized_access_found'],
+    4: ['insider_threat_detected', 'data_exfiltration_found'],
+    5: ['ddos_syn_flood', 'ddos_amplification'],
+    6: ['mitm_arp_spoof', 'mitm_session_hijack'],
+    7: ['dns_zone_transfer', 'dns_cache_poison'],
+    8: ['supply_chain_compromise', 'supply_chain_backdoor'],
+    9: ['xss_reflected', 'xss_stored', 'xss_cookie_theft']
+};
+
 function switchToDetect() {
     currentMode = 'detect';
     showScreen('detect-screen');
     loadDetectLogs();
+    
+    // Only show findings relevant to this specific room/scenario
+    const roomFindingsKeys = scenarioFindingsMap[currentScenario?.id] || Object.keys(possibleFindings);
+    
+    const container = document.getElementById('findings-checklist');
+    if (container) {
+        container.innerHTML = roomFindingsKeys.map(k => `
+            <label class="check-item"><input type="checkbox" value="${k}"><span>${possibleFindings[k]}</span></label>
+        `).join('');
+    }
 }
 
 async function loadDetectLogs() {
     try {
         // Use noise endpoint for extra challenge
         const url = sessionId ? `/api/session-logs-with-noise/${sessionId}` : `/api/session-logs/${sessionId}`;
-        const res = await fetch(url);
+        const res = await apiFetch(url);
         logs = await res.json();
         renderDetectLogs(logs);
         renderTimeline(logs);
@@ -1026,8 +1156,8 @@ async function submitAnalysis() {
     const analysis = document.getElementById('analysis-text').value;
     const findings = [...document.querySelectorAll('#findings-checklist input:checked')].map(c => c.value);
 
-    if (!analysis.trim() && findings.length === 0) {
-        alert('Please write your analysis and check relevant findings.');
+    if (!analysis.trim()) {
+        alert('A written Analysis Report is required to complete the investigation.');
         return;
     }
 
@@ -1035,12 +1165,23 @@ async function submitAnalysis() {
     if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyzing...'; }
 
     try {
-        const res = await fetch('/api/analyze-logs', {
+        const res = await apiFetch('/api/analyze-logs', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ session_id: sessionId, analysis, findings, scenario_id: currentScenario?.id })
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const result = await res.json();
+        
+        // Update user's local progress by pulling fresh data from server
+        if (currentUser) {
+            const profileRes = await apiFetch('/api/user/profile');
+            if (profileRes.ok) {
+                currentUser = await profileRes.json();
+                localStorage.setItem('spectra_user', JSON.stringify(currentUser));
+                updateHomeUserInfo();
+            }
+        }
+        
         showResults(result);
     } catch (e) {
         console.error('Error submitting analysis:', e);
@@ -1109,15 +1250,18 @@ function showResults(result) {
     else if (score >= 40) scoreCircle.classList.add('medium');
     else scoreCircle.classList.add('low');
 
-    // Display findings
+    // Display findings (only those relevant to the scenario)
+    const roomFindingsKeys = scenarioFindingsMap[currentScenario?.id] || Object.keys(possibleFindings);
     const findingsContainer = document.getElementById('findings-results');
     const findings = result.correct_findings || {};
-    findingsContainer.innerHTML = Object.entries(findings).map(([key, found]) => `
-        <div class="finding-result ${found ? 'found' : 'missed'}">
-            <span class="icon">${found ? '✅' : '❌'}</span>
-            <span class="label">${key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
-        </div>
-    `).join('');
+    findingsContainer.innerHTML = Object.entries(findings)
+        .filter(([key, found]) => roomFindingsKeys.includes(key))
+        .map(([key, found]) => `
+            <div class="finding-result ${found ? 'found' : 'missed'}">
+                <span class="icon">${found ? '✅' : '❌'}</span>
+                <span class="label">${possibleFindings[key] || key.replace(/_/g, ' ')}</span>
+            </div>
+        `).join('');
 
     // Real-world case study — randomly pick one from the array
     const studies = caseStudies[currentScenario?.id];
@@ -1322,7 +1466,7 @@ function getToolCard(toolName, step) {
 async function showCommandList() {
     showScreen('commands-screen');
     try {
-        const res = await fetch('/api/scenarios');
+        const res = await apiFetch('/api/scenarios');
         const scenarios = await res.json();
         const content = document.getElementById('commands-content');
         // Sort by difficulty
@@ -1333,7 +1477,7 @@ async function showCommandList() {
             <input type="text" id="cmd-search-input" placeholder="Search commands, tools, scenarios..." oninput="filterCommands(this.value)">
         </div>`;
         for (const s of scenarios) {
-            const detRes = await fetch(`/api/scenario/${s.id}`);
+            const detRes = await apiFetch(`/api/scenario/${s.id}`);
             const detail = await detRes.json();
 
             // Deduplicate tools within the scenario
@@ -1398,8 +1542,8 @@ async function showDashboard() {
     showScreen('dashboard-screen');
     try {
         const [dashRes, achRes] = await Promise.all([
-            fetch(`/api/dashboard?username=${encodeURIComponent(currentUser.username)}`),
-            fetch(`/api/achievements?username=${encodeURIComponent(currentUser.username)}`)
+            apiFetch(`/api/dashboard?username=${encodeURIComponent(currentUser.username)}`),
+            apiFetch(`/api/achievements?username=${encodeURIComponent(currentUser.username)}`)
         ]);
         const dash = await dashRes.json();
         const achievements = await achRes.json();
@@ -1409,7 +1553,7 @@ async function showDashboard() {
         document.getElementById('dash-level-name').textContent = dash.level_name || 'Recruit';
         document.getElementById('dash-xp-fill').style.width = (dash.xp_progress || 0) + '%';
         document.getElementById('dash-xp-label').textContent = `${dash.xp || 0} / ${(dash.level || 1) * 500} XP`;
-        document.getElementById('dash-scenarios').textContent = `${dash.completed_scenarios || 0}/${dash.total_scenarios || 8}`;
+        document.getElementById('dash-scenarios').textContent = `${dash.completed_count || 0}/${dash.total_scenarios || 8}`;
         document.getElementById('dash-xp-total').textContent = dash.xp || 0;
         document.getElementById('dash-achievements').textContent = `${dash.achievements_unlocked || 0}/${dash.total_achievements || 12}`;
         document.getElementById('dash-level').textContent = dash.level || 1;
@@ -1424,6 +1568,31 @@ async function showDashboard() {
                 </div>
             </div>
         `).join('');
+        
+        // Populate Completed Rooms
+        try {
+            const comp = JSON.parse(dash.completed_scenarios || '[]');
+            const dashRoomsGrid = document.getElementById('dash-completed-rooms');
+            if (comp.length === 0) {
+                dashRoomsGrid.innerHTML = '<p style="color: var(--text-dim); text-align: center; width: 100%; grid-column: 1 / -1;">No rooms completed yet. Execute attacks to earn XP!</p>';
+            } else {
+                const scenRes = await apiFetch('/api/scenarios');
+                const allScenarios = await scenRes.json();
+                const completedScenarios = allScenarios.filter(s => comp.includes(s.id));
+                dashRoomsGrid.innerHTML = completedScenarios.map(s => `
+                    <div class="scenario-card" style="cursor: default; position: relative;">
+                        <div style="position: absolute; top: 10px; right: 10px; color: var(--green); font-size: 0.8rem;">✅ Done</div>
+                        <h3>${s.name}</h3>
+                        <p>${s.description}</p>
+                        <div class="scenario-meta">
+                            <span>Analysis Logged</span>
+                            <span class="diff-badge ${s.difficulty.toLowerCase()}">${s.difficulty}</span>
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch(e) { console.error('Error loading dash rooms:', e); }
+
     } catch (e) { console.error('Error loading dashboard:', e); }
 }
 
@@ -1443,7 +1612,7 @@ async function loadLuca(search = '', category = '') {
         if (category) params.push(`category=${encodeURIComponent(category)}`);
         if (params.length) url += '?' + params.join('&');
 
-        const res = await fetch(url);
+        const res = await apiFetch(url);
         const data = await res.json();
 
         // Render categories
@@ -1490,7 +1659,7 @@ async function showTeamScoreboard() {
 
 async function loadTeams() {
     try {
-        const res = await fetch('/api/teams');
+        const res = await apiFetch('/api/teams');
         const teams = await res.json();
         const container = document.getElementById('team-list');
         const maxScore = Math.max(...teams.map(t => t.total_score || 0), 1);
@@ -1513,7 +1682,7 @@ async function createTeam() {
     const name = document.getElementById('team-name-input').value.trim();
     if (!name || !currentUser) return;
     try {
-        const res = await fetch('/api/teams', {
+        const res = await apiFetch('/api/teams', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'create', team_name: name, username: currentUser.username })
         });
@@ -1529,7 +1698,7 @@ async function joinTeam() {
     const name = document.getElementById('team-name-input').value.trim();
     if (!name || !currentUser) return;
     try {
-        const res = await fetch('/api/teams', {
+        const res = await apiFetch('/api/teams', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'join', team_name: name, username: currentUser.username })
         });
@@ -1702,4 +1871,30 @@ function onCommandFailed() {
 
 function onScenarioCompleted() {
     setTimeout(() => showEncouragement('scenarioComplete'), 1500);
+}
+
+async function promptRenameUser() {
+    const newName = prompt("Enter your new agent name:");
+    if (!newName || !newName.trim()) return;
+    
+    try {
+        const res = await apiFetch('/api/user/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: newName.trim() })
+        });
+        if (res.ok) {
+            const result = await res.json();
+            if (currentUser) {
+                currentUser.username = result.username;
+                localStorage.setItem('spectra_user', JSON.stringify(currentUser));
+                updateHomeUserInfo();
+            }
+        } else {
+            alert("Failed to rename user.");
+        }
+    } catch(e) {
+        console.error("Error renaming:", e);
+        alert("Failed to rename user.");
+    }
 }

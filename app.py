@@ -1,25 +1,35 @@
 from flask import Flask, render_template, jsonify, request
-from flask_cors import CORS
+# from flask_cors import CORS
 import sqlite3
 import json
 from datetime import datetime, timedelta
 import os
+from dotenv import load_dotenv
+from functools import wraps
+from supabase import create_client, Client
 
+load_dotenv()
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+supabase: Client = None
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 app = Flask(__name__)
-CORS(app)
+# CORS(app)
 
 # Database setup
 DATABASE = 'forensics.db'
 
 def get_db():
-    db = sqlite3.connect(DATABASE)
+    db = sqlite3.connect(DATABASE, timeout=15)
     db.row_factory = sqlite3.Row
+    db.execute('PRAGMA journal_mode=WAL')
     return db
 
 def init_db():
     """Initialize database with attack scenarios and logs"""
     if os.path.exists(DATABASE):
-        os.remove(DATABASE)
+        return
     
     db = get_db()
     cursor = db.cursor()
@@ -82,7 +92,7 @@ def init_db():
     )''')
 
     cursor.execute('''CREATE TABLE user_profiles (
-        id INTEGER PRIMARY KEY,
+        id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         xp INTEGER DEFAULT 0,
         level INTEGER DEFAULT 1,
@@ -92,7 +102,7 @@ def init_db():
 
     cursor.execute('''CREATE TABLE achievements (
         id INTEGER PRIMARY KEY,
-        user_id INTEGER,
+        user_id TEXT,
         achievement_key TEXT,
         unlocked_at TEXT,
         FOREIGN KEY (user_id) REFERENCES user_profiles(id)
@@ -1018,7 +1028,7 @@ ALERT: john.doe has 3 after-hours VPN sessions from unusual IP.''')
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', supabase_url=SUPABASE_URL, supabase_key=SUPABASE_KEY)
 
 @app.route('/api/scenarios', methods=['GET'])
 def get_scenarios():
@@ -1217,19 +1227,41 @@ def get_session_logs(session_id):
     db.close()
     return jsonify(logs)
 
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid token'}), 401
+        token = auth_header.split(' ')[1]
+        try:
+            res = supabase.auth.get_user(token)
+            if not getattr(res, 'user', None):
+                return jsonify({'error': 'Invalid token'}), 401
+            request.supabase_user = res.user
+        except Exception as e:
+            return jsonify({'error': 'Unauthorized', 'details': str(e)}), 401
+        return f(*args, **kwargs)
+    return decorated
+
 @app.route('/api/analyze-logs', methods=['POST'])
+@require_auth
 def analyze_logs():
     """Analyze logs and provide investigation hints"""
     data = request.json
     session_id = data.get('session_id')
     user_analysis = data.get('analysis')
+    scenario_id = data.get('scenario_id')
     
     db = get_db()
     cursor = db.cursor()
     
-    # Get session scenario
-    cursor.execute('SELECT scenario_id FROM sessions WHERE session_id = ?', (session_id,))
-    session = cursor.fetchone()
+    # Get session scenario if not provided directly
+    if not scenario_id and session_id:
+        cursor.execute('SELECT scenario_id FROM sessions WHERE session_id = ?', (session_id,))
+        session = cursor.fetchone()
+        if session:
+            scenario_id = session['scenario_id']
     
     # Get actual logs from attack mode
     cursor.execute('''SELECT * FROM generated_logs 
@@ -1238,6 +1270,20 @@ def analyze_logs():
     
     # Analyze if user found key evidence
     findings = analyze_for_evidence(logs, user_analysis)
+    
+    if scenario_id:
+        user_id = request.supabase_user.id
+        cursor.execute('SELECT completed_scenarios, xp FROM user_profiles WHERE id = ?', (user_id,))
+        user_row = cursor.fetchone()
+        if user_row:
+            completed = json.loads(user_row['completed_scenarios'] or '[]')
+            if int(scenario_id) not in completed:
+                completed.append(int(scenario_id))
+                # Add score to XP
+                new_xp = user_row['xp'] + int(findings.get('score', 0))
+                cursor.execute('UPDATE user_profiles SET completed_scenarios = ?, xp = ? WHERE id = ?', 
+                               (json.dumps(completed), new_xp, user_id))
+                db.commit()
     
     db.close()
     return jsonify(findings)
@@ -1396,28 +1442,36 @@ def generate_noise_logs(real_logs, count=8):
 def analyze_for_evidence(logs, user_analysis):
     """Check if user found key evidence"""
     evidence_logs = [l for l in logs if l.get('is_evidence', 1) != 0]
-    found_email = any('admin@compny' in log['content'] for log in evidence_logs)
-    found_domain = any('fake-domain' in log['content'] for log in evidence_logs)
-    found_credentials = any('credential' in log['content'].lower() for log in evidence_logs)
-    found_ssh = any('ssh' in log['content'].lower() and 'successful' in log['content'].lower() for log in evidence_logs)
-    found_sqli = any('sql' in log['content'].lower() or 'union' in log['content'].lower() for log in evidence_logs)
-    found_malware = any('meterpreter' in log['content'].lower() or 'encrypted' in log['content'].lower() for log in evidence_logs)
-    found_insider = any('after hours' in log['content'].lower() or 'outside business' in log['content'].lower() for log in evidence_logs)
-    found_exfil = any('scp' in log['content'].lower() or 'export' in log['content'].lower() for log in evidence_logs)
+    content = " ".join([l['content'].lower() for l in evidence_logs])
+    
+    findings = {
+        'phishing_email_detected': 'admin@compny' in content or 'phishing' in content,
+        'fake_domain_identified': 'fake-domain' in content,
+        'credential_theft_found': 'credential' in content or 'creds' in content,
+        'unauthorized_access_found': ('ssh' in content and 'successful' in content) or 'admin login' in content,
+        'sql_injection_detected': 'sql' in content or 'union' in content,
+        'malware_activity_found': 'meterpreter' in content or 'encrypted' in content,
+        'insider_threat_detected': 'after hours' in content or 'outside business' in content,
+        'data_exfiltration_found': 'scp' in content or 'export' in content or 'exfiltrate' in content,
+        'ddos_syn_flood': 'syn flood' in content or 'hping' in content,
+        'ddos_amplification': 'amplification' in content or 'dnsamplify' in content,
+        'mitm_arp_spoof': 'arp spoofing' in content or 'arpspoof' in content,
+        'mitm_session_hijack': 'session stolen' in content or 'ferret' in content,
+        'dns_zone_transfer': 'zone transfer' in content or 'axfr' in content,
+        'dns_cache_poison': 'cache poisoned' in content or 'rogue dns' in content,
+        'supply_chain_compromise': 'maintainer compromised' in content or 'analytics-helper' in content,
+        'supply_chain_backdoor': 'backdoor' in content or 'postinstall' in content,
+        'xss_reflected': 'reflects input' in content or '<script>' in content,
+        'xss_stored': 'stored xss' in content or 'comments' in content,
+        'xss_cookie_theft': 'session tokens' in content or 'phpsessid' in content
+    }
+    
+    score = sum(findings.values()) * 12.5
+    if score > 100: score = 100
     
     return {
-        'correct_findings': {
-            'phishing_email_detected': found_email,
-            'fake_domain_identified': found_domain,
-            'credential_theft_found': found_credentials,
-            'unauthorized_access_found': found_ssh,
-            'sql_injection_detected': found_sqli,
-            'malware_activity_found': found_malware,
-            'insider_threat_detected': found_insider,
-            'data_exfiltration_found': found_exfil
-        },
-        'score': sum([found_email, found_domain, found_credentials, found_ssh,
-                      found_sqli, found_malware, found_insider, found_exfil]) * 12.5,
+        'correct_findings': findings,
+        'score': score,
         'message': 'Investigation complete! Check your findings above.'
     }
 
@@ -1425,58 +1479,84 @@ def analyze_for_evidence(logs, user_analysis):
 # NEW API ENDPOINTS
 # ==========================================
 
+
+
 @app.route('/api/user/profile', methods=['GET', 'POST'])
+@require_auth
 def user_profile():
     if request.method == 'POST':
         data = request.json
         username = data.get('username', '').strip()
         if not username:
             return jsonify({'error': 'Username required'}), 400
+        
+        user_id = request.supabase_user.id
         db = get_db()
         cursor = db.cursor()
-        cursor.execute('SELECT * FROM user_profiles WHERE username = ?', (username,))
+        cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (user_id,))
         existing = cursor.fetchone()
+        
         if existing:
             db.close()
             return jsonify(dict(existing))
-        cursor.execute('INSERT INTO user_profiles (username, xp, level, completed_scenarios, created_at) VALUES (?,?,?,?,?)',
-            (username, 0, 1, '[]', datetime.now().isoformat()))
+            
+        cursor.execute('INSERT INTO user_profiles (id, username, xp, level, completed_scenarios, created_at) VALUES (?,?,?,?,?,?)',
+            (user_id, username, 0, 1, '[]', datetime.now().isoformat()))
         db.commit()
-        user_id = cursor.lastrowid
         db.close()
         return jsonify({'id': user_id, 'username': username, 'xp': 0, 'level': 1, 'completed_scenarios': '[]'})
     else:
-        username = request.args.get('username', '')
+        user_id = request.supabase_user.id
         db = get_db()
         cursor = db.cursor()
-        cursor.execute('SELECT * FROM user_profiles WHERE username = ?', (username,))
+        cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (user_id,))
         user = cursor.fetchone()
         db.close()
         if user:
             return jsonify(dict(user))
         return jsonify({'error': 'User not found'}), 404
 
-@app.route('/api/user/xp', methods=['POST'])
-def award_xp():
+@app.route('/api/user/rename', methods=['POST'])
+@require_auth
+def rename_user():
     data = request.json
-    username = data.get('username', '')
-    xp_amount = data.get('xp', 0)
-    scenario_id = data.get('scenario_id')
+    new_name = data.get('username', '').strip()
+    if not new_name:
+        return jsonify({'error': 'Name required'}), 400
+    user_id = request.supabase_user.id
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT * FROM user_profiles WHERE username = ?', (username,))
+    cursor.execute('UPDATE user_profiles SET username = ? WHERE id = ?', (new_name, user_id))
+    db.commit()
+    db.close()
+    return jsonify({'success': True, 'username': new_name})
+
+@app.route('/api/user/xp', methods=['POST'])
+@require_auth
+def award_xp():
+    data = request.json
+    xp_amount = data.get('xp', 0)
+    scenario_id = data.get('scenario_id')
+    user_id = request.supabase_user.id
+    
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (user_id,))
     user = cursor.fetchone()
     if not user:
         db.close()
         return jsonify({'error': 'User not found'}), 404
+        
     user = dict(user)
     new_xp = user['xp'] + xp_amount
     new_level = min(5, 1 + new_xp // 500)
     completed = json.loads(user['completed_scenarios'])
+    
     if scenario_id and scenario_id not in completed:
         completed.append(scenario_id)
-    cursor.execute('UPDATE user_profiles SET xp = ?, level = ?, completed_scenarios = ? WHERE username = ?',
-        (new_xp, new_level, json.dumps(completed), username))
+        
+    cursor.execute('UPDATE user_profiles SET xp = ?, level = ?, completed_scenarios = ? WHERE id = ?',
+        (new_xp, new_level, json.dumps(completed), user_id))
     db.commit()
     db.close()
     level_names = {1: 'Recruit', 2: 'Analyst', 3: 'Specialist', 4: 'Expert', 5: 'Elite'}
@@ -1485,16 +1565,17 @@ def award_xp():
                     'leveled_up': leveled_up, 'completed_scenarios': completed})
 
 @app.route('/api/achievements', methods=['GET'])
+@require_auth
 def get_achievements():
-    username = request.args.get('username', '')
+    user_id = request.supabase_user.id
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT * FROM user_profiles WHERE username = ?', (username,))
+    cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (user_id,))
     user = cursor.fetchone()
     if not user:
         db.close()
         return jsonify([])
-    cursor.execute('SELECT achievement_key, unlocked_at FROM achievements WHERE user_id = ?', (user['id'],))
+    cursor.execute('SELECT achievement_key, unlocked_at FROM achievements WHERE user_id = ?', (user_id,))
     unlocked = {row['achievement_key']: row['unlocked_at'] for row in cursor.fetchall()}
     db.close()
     all_achievements = [
@@ -1517,39 +1598,44 @@ def get_achievements():
     return jsonify(all_achievements)
 
 @app.route('/api/achievements/unlock', methods=['POST'])
+@require_auth
 def unlock_achievement():
     data = request.json
-    username = data.get('username', '')
     key = data.get('achievement_key', '')
+    user_id = request.supabase_user.id
+    
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT id FROM user_profiles WHERE username = ?', (username,))
+    cursor.execute('SELECT id FROM user_profiles WHERE id = ?', (user_id,))
     user = cursor.fetchone()
     if not user:
         db.close()
         return jsonify({'error': 'User not found'}), 404
-    cursor.execute('SELECT id FROM achievements WHERE user_id = ? AND achievement_key = ?', (user['id'], key))
+        
+    cursor.execute('SELECT id FROM achievements WHERE user_id = ? AND achievement_key = ?', (user_id, key))
     if cursor.fetchone():
         db.close()
         return jsonify({'already_unlocked': True})
+        
     cursor.execute('INSERT INTO achievements (user_id, achievement_key, unlocked_at) VALUES (?,?,?)',
-        (user['id'], key, datetime.now().isoformat()))
+        (user_id, key, datetime.now().isoformat()))
     db.commit()
     db.close()
     return jsonify({'unlocked': True, 'achievement_key': key})
 
 @app.route('/api/dashboard', methods=['GET'])
+@require_auth
 def get_dashboard():
-    username = request.args.get('username', '')
+    user_id = request.supabase_user.id
     db = get_db()
     cursor = db.cursor()
-    cursor.execute('SELECT * FROM user_profiles WHERE username = ?', (username,))
+    cursor.execute('SELECT * FROM user_profiles WHERE id = ?', (user_id,))
     user = cursor.fetchone()
     if not user:
         db.close()
         return jsonify({'error': 'User not found'}), 404
     user = dict(user)
-    cursor.execute('SELECT COUNT(*) as cnt FROM achievements WHERE user_id = ?', (user['id'],))
+    cursor.execute('SELECT COUNT(*) as cnt FROM achievements WHERE user_id = ?', (user_id,))
     ach_count = cursor.fetchone()['cnt']
     cursor.execute('SELECT COUNT(*) as cnt FROM scenarios')
     total_scenarios = cursor.fetchone()['cnt']
@@ -1560,7 +1646,7 @@ def get_dashboard():
         'username': user['username'], 'xp': user['xp'], 'level': user['level'],
         'level_name': level_names.get(user['level'], 'Recruit'),
         'xp_to_next': 500 - (user['xp'] % 500), 'xp_progress': (user['xp'] % 500) / 500 * 100,
-        'completed_scenarios': len(completed), 'total_scenarios': total_scenarios,
+        'completed_scenarios': user['completed_scenarios'], 'completed_count': len(completed), 'total_scenarios': total_scenarios,
         'achievements_unlocked': ach_count, 'total_achievements': 12
     })
 
@@ -1931,6 +2017,23 @@ def get_network_map(scenario_id):
         'edges': [{'from':'attacker','to':'certutil'},{'from':'attacker','to':'wmic'},{'from':'certutil','to':'schtasks'},
                   {'from':'wmic','to':'psexec'},{'from':'psexec','to':'dns'},{'from':'schtasks','to':'dns'}]}
     return jsonify(maps.get(scenario_id, maps[1]))
+
+@app.route('/db-viewer')
+def db_viewer():
+    return render_template('db_viewer.html')
+
+@app.route('/api/admin/db')
+def api_admin_db():
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = [r['name'] for r in cursor.fetchall()]
+    data = {}
+    for t in tables:
+        cursor.execute(f"SELECT * FROM {t} LIMIT 100")
+        data[t] = [dict(row) for row in cursor.fetchall()]
+    db.close()
+    return jsonify(data)
 
 if __name__ == '__main__':
     init_db()
