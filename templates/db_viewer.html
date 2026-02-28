@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPECTRA Database Viewer</title>
+    <style>
+        :root {
+            --bg-color: #0b1120;
+            --panel-bg: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-dim: #94a3b8;
+            --cyan: #22d3ee;
+            --purple: #a855f7;
+            --green: #4ade80;
+        }
+        body { 
+            background: var(--bg-color); 
+            color: var(--text-main); 
+            font-family: 'Courier New', monospace; 
+            padding: 30px; 
+            margin: 0;
+        }
+        h1 { 
+            color: var(--cyan); 
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px rgba(34, 211, 238, 0.5);
+        }
+        p.subtitle {
+            text-align: center;
+            color: var(--text-dim);
+            margin-bottom: 40px;
+        }
+        .table-container { 
+            margin-bottom: 40px; 
+            border: 1px solid var(--border-color); 
+            border-radius: 8px; 
+            background: var(--panel-bg); 
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+        }
+        .table-header {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h2 { 
+            color: var(--purple); 
+            margin: 0;
+            font-size: 1.2rem;
+        }
+        .row-count {
+            color: var(--cyan);
+            font-size: 0.9rem;
+        }
+        .table-wrapper {
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            font-size: 0.9rem;
+        }
+        th, td { 
+            border: 1px solid var(--border-color); 
+            padding: 10px 15px; 
+            text-align: left; 
+            white-space: nowrap;
+        }
+        th { 
+            background: rgba(15, 23, 42, 0.9); 
+            color: var(--green); 
+            position: sticky;
+            top: 0;
+        }
+        tr:nth-child(even) { background: rgba(255, 255, 255, 0.03); }
+        tr:hover { background: rgba(34, 211, 238, 0.1); }
+        .null-val { color: var(--text-dim); font-style: italic; }
+        
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: var(--cyan); border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>SPECTRA DB Viewer</h1>
+    <p class="subtitle">Live look into the SQLite local database (forensics.db)</p>
+    
+    <div id="db-content">
+        <div style="text-align: center; color: var(--cyan); font-size: 1.2rem; padding: 50px;">
+            Establishing connection to database...
+        </div>
+    </div>
+
+    <script>
+        fetch('/api/admin/db')
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('db-content');
+            container.innerHTML = '';
+            
+            for (const [tableName, rows] of Object.entries(data)) {
+                let html = `
+                <div class="table-container">
+                    <div class="table-header">
+                        <h2>[Table] ${tableName}</h2>
+                        <span class="row-count">${rows.length} rows (limit 100)</span>
+                    </div>
+                    <div class="table-wrapper">
+                `;
+                
+                if (rows.length === 0) {
+                    html += `<div style="padding: 20px; color: var(--text-dim); text-align: center;">Table is empty</div>`;
+                } else {
+                    const columns = Object.keys(rows[0]);
+                    html += `<table><thead><tr>${columns.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>`;
+                    
+                    rows.forEach(row => {
+                        html += `<tr>${columns.map(c => {
+                            let val = row[c];
+                            if (val === null) return `<td class="null-val">NULL</td>`;
+                            if (typeof val === 'string' && val.length > 100) val = val.substring(0, 100) + '...';
+                            // encode html safely
+                            const div = document.createElement('div');
+                            div.innerText = val;
+                            return `<td>${div.innerHTML}</td>`;
+                        }).join('')}</tr>`;
+                    });
+                    
+                    html += `</tbody></table>`;
+                }
+                
+                html += `</div></div>`;
+                container.innerHTML += html;
+            }
+        })
+        .catch(err => {
+            document.getElementById('db-content').innerHTML = `
+                <div style="text-align: center; color: #ef4444; font-size: 1.2rem; padding: 50px;">
+                    Error connecting to database. Is the Python backend running?
+                </div>
+            `;
+        });
+    </script>
+</body>
+</html>
